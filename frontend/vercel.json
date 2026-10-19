@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_API_URL": {
+      "description": "Backend API URL",
+      "value": "https://your-backend-url.railway.app"
+    }
+  }
+}

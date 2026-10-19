@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-zinc-900/70 backdrop-blur-xl;
+  }
+  
+  .jewel-case {
+    @apply relative rounded-lg border border-white/10 bg-gradient-to-br from-zinc-900 to-zinc-950 shadow-2xl;
+  }
+  
+  .jewel-spine {
+    @apply absolute left-0 top-0 h-full w-2 bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-900;
+    box-shadow: inset -1px 0 2px rgba(0, 0, 0, 0.5);
+  }
+}
