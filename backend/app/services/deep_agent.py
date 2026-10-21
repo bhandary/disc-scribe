@@ -6,9 +6,14 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from typing_extensions import TypedDict
+import asyncio
 import json
 
 from app.services.brave_search import BraveSearchService
+
+
+# Brave Search Free plan allows 1 request/second. Slightly over to be safe.
+BRAVE_RATE_LIMIT_DELAY_SECONDS = 1.1
 
 
 class AgentState(TypedDict):
@@ -103,12 +108,18 @@ Be thorough but concise. Focus on verified information."""
             "data": {"queries": plan_queries}
         }
         
-        # Execute searches via Brave Search API
+        # Execute searches via Brave Search API, paced to the Free plan's
+        # 1 req/sec limit. Per-query failures are emitted as a non-terminal
+        # 'search_error' event so one bad query doesn't tear down the stream
+        # on the client (which treats 'error' as fatal and closes the drawer).
         all_results = []
-        for query in plan_queries:
+        for idx, query in enumerate(plan_queries):
+            if idx > 0:
+                await asyncio.sleep(BRAVE_RATE_LIMIT_DELAY_SECONDS)
+
             yield {
                 "type": "tool_call",
-                "data": {"tool": "brave_search", "query": query}
+                "data": {"tool": "brave_search", "query": query},
             }
 
             try:
@@ -118,8 +129,8 @@ Be thorough but concise. Focus on verified information."""
                 all_results.extend(results)
             except Exception as e:
                 yield {
-                    "type": "error",
-                    "data": {"message": f"Brave Search error: {str(e)}"}
+                    "type": "search_error",
+                    "data": {"query": query, "message": f"Brave Search error: {str(e)}"},
                 }
         
         # Synthesize report

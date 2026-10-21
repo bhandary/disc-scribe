@@ -92,6 +92,17 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
       eventSource.close();
     });
 
+    // Per-query search failures: show in the status line but keep streaming;
+    // the agent will fall back to general knowledge or other successful queries.
+    eventSource.addEventListener("search_error", (event: MessageEvent) => {
+      const data = parseEvent<{ query?: string; message?: string }>(event, "search_error");
+      if (!data) return;
+      setEnrichmentState((prev) => ({
+        ...prev,
+        message: `Search skipped (${data.query ?? "query"}): ${data.message ?? "error"}`,
+      }));
+    });
+
     eventSource.addEventListener("error", (event: MessageEvent) => {
       const data = parseEvent<{ message?: string }>(event, "error");
       setEnrichmentState((prev) => ({
