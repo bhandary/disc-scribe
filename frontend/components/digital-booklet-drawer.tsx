@@ -83,12 +83,14 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
     eventSource.addEventListener("complete", (event: MessageEvent) => {
       const data = parseEvent<{ summary: string; sources?: Array<{ title: string; url: string }> }>(event, "complete");
       if (!data) return;
-      setEnrichmentState({
+      setEnrichmentState((prev) => ({
         status: "complete",
         message: "Enrichment complete!",
-        content: data.summary,
+        // Prefer the final summary, but fall back to the tokens we already
+        // streamed so a partial LLM stream still shows something.
+        content: data.summary && data.summary.trim() ? data.summary : prev.content,
         sources: data.sources || [],
-      });
+      }));
       eventSource.close();
     });
 
@@ -125,7 +127,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
 
   useEffect(() => {
     if (cd && isOpen) {
-      if (cd.ai_summary) {
+      if (cd.ai_summary && cd.ai_summary.trim()) {
         setEnrichmentState({
           status: "complete",
           message: "Cached liner notes",

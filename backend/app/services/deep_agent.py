@@ -16,6 +16,37 @@ from app.services.brave_search import BraveSearchService
 BRAVE_RATE_LIMIT_DELAY_SECONDS = 1.1
 
 
+def _extract_text(content: Any) -> str:
+    """
+    Normalize a LangChain message chunk's `.content` to a plain text string.
+
+    Modern Claude models (Haiku 5.5, Sonnet 4.5+, Opus 4.5+) stream chunks
+    whose `content` is a list of content blocks like
+        [{"type": "text", "text": "..."},
+         {"type": "thinking", "thinking": "..."}]
+    rather than a bare string. Concatenating that list with `+=` raises
+    `can only concatenate str (not "list") to str`, which silently killed
+    the synthesis stream. We keep only visible text here; thinking blocks
+    are internal reasoning and shouldn't leak into the liner notes.
+    """
+    if not content:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                btype = block.get("type")
+                if btype == "text":
+                    parts.append(block.get("text", ""))
+                # Deliberately ignore 'thinking', 'tool_use', etc.
+        return "".join(parts)
+    return str(content)
+
+
 class AgentState(TypedDict):
     messages: list
     plan: Optional[str]
@@ -40,9 +71,13 @@ class DeepAgentEnricher:
         # Opus 4.x+, reasoning-tier Sonnets) reject the `temperature` param, so
         # we omit it and let each model use its own default.
         if "claude" in model.lower() and anthropic_key:
+            # Haiku 5.5 / newer Claude models stream thinking blocks first.
+            # Turn thinking off so astream() yields visible text, not only
+            # {"type": "thinking"} chunks that our extractor correctly skips.
             self.llm = ChatAnthropic(
                 model=model,
                 anthropic_api_key=anthropic_key,
+                thinking={"type": "disabled"},
             )
         elif openai_key:
             self.llm = ChatOpenAI(
@@ -154,14 +189,28 @@ Be engaging and informative."""
 
         # Stream synthesis
         messages = [HumanMessage(content=synthesis_prompt)]
-        
+
         full_response = ""
         async for chunk in self.llm.astream(messages):
-            if hasattr(chunk, 'content') and chunk.content:
-                full_response += chunk.content
+            text = _extract_text(getattr(chunk, "content", None))
+            if not text:
+                continue
+            full_response += text
+            yield {
+                "type": "token",
+                "data": {"content": text},
+            }
+
+        # Newer Claude models can stream only thinking blocks. If we got no
+        # visible text, fall back to a non-streaming call so the drawer still
+        # receives liner notes instead of sources-only.
+        if not full_response.strip():
+            result = await self.llm.ainvoke(messages)
+            full_response = _extract_text(getattr(result, "content", None))
+            if full_response:
                 yield {
                     "type": "token",
-                    "data": {"content": chunk.content}
+                    "data": {"content": full_response},
                 }
         
         # Extract sources

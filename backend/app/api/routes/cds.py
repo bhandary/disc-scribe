@@ -178,6 +178,37 @@ async def fetch_missing_cover_art(limit: Optional[int] = None) -> int:
     return fetched
 
 
+@router.get("/facets")
+async def get_facets(
+    field: str = Query(..., description="artist | album_name | lyricist | genre"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return unique values (and counts) for a CD field so the UI can filter."""
+    field_map = {
+        "artist": CD.artist,
+        "album": CD.album_name,
+        "album_name": CD.album_name,
+        "lyricist": CD.lyricist,
+        "genre": CD.genre,
+    }
+    column = field_map.get(field)
+    if column is None:
+        raise HTTPException(status_code=400, detail="Invalid facet field")
+
+    stmt = (
+        select(column.label("value"), func.count().label("count"))
+        .where(column.is_not(None))
+        .where(func.trim(column) != "")
+        .group_by(column)
+        .order_by(func.count().desc(), column.asc())
+    )
+    rows = (await db.execute(stmt)).all()
+    return {
+        "field": field,
+        "values": [{"value": row.value, "count": row.count} for row in rows],
+    }
+
+
 @router.get("/search", response_model=CDSearchResponse)
 async def search_cds(
     q: Optional[str] = Query(None, description="Omni-search query"),
@@ -217,13 +248,14 @@ async def search_cds(
     if genre:
         conditions.append(CD.genre.ilike(f"%{genre}%"))
     
-    # Query with conditions
+    # Query with conditions. Always order so pagination is stable.
     if conditions:
-        stmt = select(CD).where(*conditions).offset(offset).limit(limit)
+        stmt = select(CD).where(*conditions).order_by(CD.album_name, CD.artist)
         count_stmt = select(func.count()).select_from(CD).where(*conditions)
     else:
-        stmt = select(CD).offset(offset).limit(limit)
+        stmt = select(CD).order_by(CD.album_name, CD.artist)
         count_stmt = select(func.count()).select_from(CD)
+    stmt = stmt.offset(offset).limit(limit)
     
     result = await db.execute(stmt)
     cds = result.scalars().all()
@@ -312,10 +344,15 @@ async def enrich_cd_stream(
                 event_data = event.get("data", {})
                 
                 if event_type == "complete":
-                    # Save to database
-                    cd.ai_summary = event_data.get("summary")
-                    cd.ai_sources = event_data.get("sources", [])
-                    await db.commit()
+                    # Save to database, but only if we actually got a usable
+                    # summary. Caching an empty/truncated summary would make
+                    # the drawer render blank forever on next open since the
+                    # frontend treats a non-null ai_summary as "done".
+                    summary = (event_data.get("summary") or "").strip()
+                    if summary:
+                        cd.ai_summary = summary
+                        cd.ai_sources = event_data.get("sources", [])
+                        await db.commit()
                 
                 # SSE 'data' MUST be a string; passing a dict makes sse-starlette
                 # fall back to str(dict) which emits Python repr (single quotes)

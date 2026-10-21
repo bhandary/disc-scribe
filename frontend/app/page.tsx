@@ -49,11 +49,20 @@ export default function Home() {
     loadCDs();
   }, [loadCDs]);
 
-  const handleSearch = (query: string, filter: SearchFilter) => {
-    setSearchQuery(query);
-    setSearchFilter(filter);
-    setPage(1);
-  };
+  const handleSearch = useCallback((query: string, filter: SearchFilter) => {
+    setSearchQuery((prevQuery) => {
+      if (prevQuery !== query) {
+        setPage(1);
+      }
+      return query;
+    });
+    setSearchFilter((prevFilter) => {
+      if (prevFilter !== filter) {
+        setPage(1);
+      }
+      return filter;
+    });
+  }, []);
 
   const handleCDClick = (cd: CD) => {
     setSelectedCD(cd);

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 interface SearchBarProps {
   onSearch: (query: string, filter: SearchFilter) => void;
@@ -22,16 +23,18 @@ const filters: { value: SearchFilter; label: string }[] = [
 
 const PLACEHOLDERS: Record<SearchFilter, string> = {
   all: "Search your collection...",
-  artist: "Search by artist (e.g. A. R. Rahman)...",
-  album: "Search by album name...",
-  lyricist: "Search by lyricist...",
-  genre: "Search by genre (e.g. Hindi Film)...",
+  artist: "Search or pick an artist...",
+  album: "Search or pick an album...",
+  lyricist: "Search or pick a lyricist...",
+  genre: "Search or pick a genre...",
 };
 
 export function SearchBar({ onSearch, className }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<SearchFilter>("all");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [facets, setFacets] = useState<Array<{ value: string; count: number }>>([]);
+  const [isLoadingFacets, setIsLoadingFacets] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -41,9 +44,54 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
     return () => clearTimeout(timer);
   }, [query]);
 
+  const onSearchRef = useRef(onSearch);
+  onSearchRef.current = onSearch;
+
   useEffect(() => {
-    onSearch(debouncedQuery, activeFilter);
-  }, [debouncedQuery, activeFilter, onSearch]);
+    onSearchRef.current(debouncedQuery, activeFilter);
+  }, [debouncedQuery, activeFilter]);
+
+  useEffect(() => {
+    if (activeFilter === "all") {
+      setFacets([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingFacets(true);
+    api
+      .getFacets(activeFilter)
+      .then((data) => {
+        if (!cancelled) setFacets(data.values);
+      })
+      .catch((error) => {
+        console.error("Failed to load filters:", error);
+        if (!cancelled) setFacets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingFacets(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilter]);
+
+  const selectFilter = (filter: SearchFilter) => {
+    setActiveFilter(filter);
+    if (filter === "all") {
+      return;
+    }
+    // Switching fields should start from the full value list, not a leftover query.
+    setQuery("");
+    setDebouncedQuery("");
+  };
+
+  const visibleFacets = query
+    ? facets.filter((facet) =>
+        facet.value.toLowerCase().includes(query.toLowerCase())
+      )
+    : facets;
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -63,7 +111,8 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
         {filters.map((filter) => (
           <button
             key={filter.value}
-            onClick={() => setActiveFilter(filter.value)}
+            type="button"
+            onClick={() => selectFilter(filter.value)}
             className={cn(
               "px-4 py-1.5 rounded-full text-sm font-medium transition-all",
               activeFilter === filter.value
@@ -75,6 +124,38 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
           </button>
         ))}
       </div>
+
+      {activeFilter !== "all" && (
+        <div className="max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-white/5 p-2">
+          {isLoadingFacets ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground">Loading {activeFilter}s…</p>
+          ) : visibleFacets.length === 0 ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground">No matching {activeFilter}s</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {visibleFacets.map((facet) => (
+                <button
+                  key={facet.value}
+                  type="button"
+                  onClick={() => {
+                    setQuery(facet.value);
+                    setDebouncedQuery(facet.value);
+                  }}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs transition-all border",
+                    query === facet.value
+                      ? "bg-vinyl-gold text-vinyl-obsidian border-transparent"
+                      : "bg-black/20 text-foreground border-white/10 hover:bg-white/10"
+                  )}
+                >
+                  {facet.value}
+                  <span className="ml-1 opacity-70">{facet.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

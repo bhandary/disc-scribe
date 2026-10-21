@@ -56,6 +56,15 @@ export const api = {
     return response.json();
   },
 
+  async getFacets(field: "artist" | "album" | "album_name" | "lyricist" | "genre"): Promise<{
+    field: string;
+    values: Array<{ value: string; count: number }>;
+  }> {
+    const response = await fetch(`${API_URL}/api/cds/facets?field=${encodeURIComponent(field)}`);
+    if (!response.ok) throw new Error("Failed to fetch filters");
+    return response.json();
+  },
+
   async getCD(id: string): Promise<CD> {
     const response = await fetch(`${API_URL}/api/cds/${id}`);
     if (!response.ok) throw new Error("Failed to fetch CD");
