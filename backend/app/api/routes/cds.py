@@ -29,7 +29,7 @@ async def upload_csv(
         raise HTTPException(status_code=400, detail="File must be a CSV")
     
     content = await file.read()
-    csv_text = content.decode('utf-8')
+    csv_text = content.decode('utf-8-sig')
     csv_reader = csv.DictReader(io.StringIO(csv_text))
     
     # Normalize headers (case-insensitive)
