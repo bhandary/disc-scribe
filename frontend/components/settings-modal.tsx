@@ -27,7 +27,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [tavilyKey, setTavilyKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
-  const [llmModel, setLlmModel] = useState("claude-3-7-sonnet-latest");
+  const [llmModel, setLlmModel] = useState("claude-haiku-5-5");
 
   useEffect(() => {
     if (isOpen) {
@@ -177,7 +177,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 onChange={(e) => setLlmModel(e.target.value)}
                 className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet (Latest)</option>
+                <option value="claude-haiku-5-5">Claude Haiku 5.5 (Default)</option>
+                <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
                 <option value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="gpt-4o-mini">GPT-4o Mini</option>

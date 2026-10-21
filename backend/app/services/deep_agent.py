@@ -26,7 +26,7 @@ class DeepAgentEnricher:
         tavily_key: str,
         anthropic_key: Optional[str] = None,
         openai_key: Optional[str] = None,
-        model: str = "claude-3-7-sonnet-latest"
+        model: str = "claude-haiku-5-5"
     ):
         self.tavily_key = tavily_key
         

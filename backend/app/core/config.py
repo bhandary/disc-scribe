@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
-    LLM_MODEL: str = "claude-3-7-sonnet-latest"
+    LLM_MODEL: str = "claude-haiku-5-5"
     CORS_ORIGINS: str = "http://localhost:3000"
     
     @property
