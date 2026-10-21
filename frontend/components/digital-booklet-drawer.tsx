@@ -38,8 +38,20 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
 
     const eventSource = api.enrichCDStream(cdId);
 
+    // Parse SSE payloads defensively: a single malformed event must not crash
+    // the whole drawer (which would fall through to onerror -> "Connection error").
+    const parseEvent = <T,>(event: MessageEvent, name: string): T | null => {
+      try {
+        return JSON.parse(event.data) as T;
+      } catch (err) {
+        console.warn(`Skipping malformed SSE '${name}' event:`, event.data, err);
+        return null;
+      }
+    };
+
     eventSource.addEventListener("plan", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
+      const data = parseEvent<{ status?: string; queries?: string[] }>(event, "plan");
+      if (!data) return;
       setEnrichmentState((prev) => ({
         ...prev,
         status: "planning",
@@ -48,7 +60,8 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
     });
 
     eventSource.addEventListener("tool_call", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
+      const data = parseEvent<{ query: string }>(event, "tool_call");
+      if (!data) return;
       setEnrichmentState((prev) => ({
         ...prev,
         status: "searching",
@@ -57,7 +70,8 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
     });
 
     eventSource.addEventListener("token", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
+      const data = parseEvent<{ content: string }>(event, "token");
+      if (!data) return;
       setEnrichmentState((prev) => ({
         ...prev,
         status: "synthesizing",
@@ -67,7 +81,8 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
     });
 
     eventSource.addEventListener("complete", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
+      const data = parseEvent<{ summary: string; sources?: Array<{ title: string; url: string }> }>(event, "complete");
+      if (!data) return;
       setEnrichmentState({
         status: "complete",
         message: "Enrichment complete!",
@@ -78,11 +93,11 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
     });
 
     eventSource.addEventListener("error", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
+      const data = parseEvent<{ message?: string }>(event, "error");
       setEnrichmentState((prev) => ({
         ...prev,
         status: "error",
-        message: data.message || "Enrichment failed",
+        message: data?.message || "Enrichment failed",
       }));
       eventSource.close();
     });

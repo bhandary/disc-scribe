@@ -30,18 +30,19 @@ class DeepAgentEnricher:
     ):
         self.tavily_key = tavily_key
         
-        # Initialize LLM based on model
+        # Initialize LLM based on model. Note: newer Claude models (Haiku 5.5,
+        # Opus 4.x+, reasoning-tier Sonnets) reject the `temperature` param, so
+        # we omit it and let each model use its own default.
         if "claude" in model.lower() and anthropic_key:
             self.llm = ChatAnthropic(
                 model=model,
                 anthropic_api_key=anthropic_key,
-                temperature=0.7
             )
         elif openai_key:
             self.llm = ChatOpenAI(
                 model=model if "gpt" in model.lower() else "gpt-4o",
                 openai_api_key=openai_key,
-                temperature=0.7
+                temperature=0.7,
             )
         else:
             raise ValueError("No valid API key provided for LLM")

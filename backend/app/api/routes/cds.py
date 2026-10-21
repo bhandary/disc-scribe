@@ -7,6 +7,7 @@ import csv
 import io
 from sse_starlette.sse import EventSourceResponse
 import asyncio
+import json
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.models.cd import CD
@@ -316,15 +317,18 @@ async def enrich_cd_stream(
                     cd.ai_sources = event_data.get("sources", [])
                     await db.commit()
                 
+                # SSE 'data' MUST be a string; passing a dict makes sse-starlette
+                # fall back to str(dict) which emits Python repr (single quotes)
+                # that JSON.parse chokes on in the browser.
                 yield {
                     "event": event_type,
-                    "data": event_data
+                    "data": json.dumps(event_data, default=str),
                 }
-        
+
         except Exception as e:
             yield {
                 "event": "error",
-                "data": {"message": str(e)}
+                "data": json.dumps({"message": str(e)}),
             }
     
     return EventSourceResponse(event_generator())
