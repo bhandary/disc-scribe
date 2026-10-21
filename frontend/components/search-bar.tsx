@@ -20,6 +20,14 @@ const filters: { value: SearchFilter; label: string }[] = [
   { value: "genre", label: "Genre" },
 ];
 
+const PLACEHOLDERS: Record<SearchFilter, string> = {
+  all: "Search your collection...",
+  artist: "Search by artist (e.g. A. R. Rahman)...",
+  album: "Search by album name...",
+  lyricist: "Search by lyricist...",
+  genre: "Search by genre (e.g. Hindi Film)...",
+};
+
 export function SearchBar({ onSearch, className }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<SearchFilter>("all");
@@ -45,7 +53,7 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search your collection..."
+          placeholder={PLACEHOLDERS[activeFilter]}
           className="pl-10 h-12 text-base glass border-white/20 focus:border-vinyl-gold"
         />
       </div>

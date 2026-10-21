@@ -1,13 +1,14 @@
 from typing import AsyncIterator, Dict, Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from typing_extensions import TypedDict
 import json
+
+from app.services.brave_search import BraveSearchService
 
 
 class AgentState(TypedDict):
@@ -23,13 +24,13 @@ class DeepAgentEnricher:
     
     def __init__(
         self,
-        tavily_key: str,
+        brave_key: str,
         anthropic_key: Optional[str] = None,
         openai_key: Optional[str] = None,
         model: str = "claude-haiku-5-5"
     ):
-        self.tavily_key = tavily_key
-        
+        self.brave_key = brave_key
+
         # Initialize LLM based on model. Note: newer Claude models (Haiku 5.5,
         # Opus 4.x+, reasoning-tier Sonnets) reject the `temperature` param, so
         # we omit it and let each model use its own default.
@@ -46,12 +47,6 @@ class DeepAgentEnricher:
             )
         else:
             raise ValueError("No valid API key provided for LLM")
-        
-        self.tavily_tool = TavilySearchResults(
-            max_results=5,
-            api_key=tavily_key,
-            search_depth="advanced"
-        )
     
     async def enrich_cd_stream(
         self,
@@ -108,24 +103,23 @@ Be thorough but concise. Focus on verified information."""
             "data": {"queries": plan_queries}
         }
         
-        # Execute searches
+        # Execute searches via Brave Search API
         all_results = []
         for query in plan_queries:
             yield {
                 "type": "tool_call",
-                "data": {"tool": "tavily_search", "query": query}
+                "data": {"tool": "brave_search", "query": query}
             }
-            
+
             try:
-                results = await self.tavily_tool.ainvoke({"query": query})
-                if isinstance(results, list):
-                    all_results.extend(results)
-                elif isinstance(results, str):
-                    all_results.append({"content": results, "url": ""})
+                results = await BraveSearchService.search(
+                    query=query, api_key=self.brave_key, count=5
+                )
+                all_results.extend(results)
             except Exception as e:
                 yield {
                     "type": "error",
-                    "data": {"message": f"Search error: {str(e)}"}
+                    "data": {"message": f"Brave Search error: {str(e)}"}
                 }
         
         # Synthesize report

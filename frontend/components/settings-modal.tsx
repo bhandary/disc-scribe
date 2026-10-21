@@ -24,7 +24,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  const [tavilyKey, setTavilyKey] = useState("");
+  const [braveKey, setBraveKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [llmModel, setLlmModel] = useState("claude-haiku-5-5");
@@ -52,14 +52,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setIsSaving(true);
     try {
       const updates: any = {};
-      if (tavilyKey) updates.tavily_api_key = tavilyKey;
+      if (braveKey) updates.brave_api_key = braveKey;
       if (anthropicKey) updates.anthropic_api_key = anthropicKey;
       if (openaiKey) updates.openai_api_key = openaiKey;
       if (llmModel) updates.llm_model = llmModel;
 
       await api.updateAPIKeys(updates);
       
-      setTavilyKey("");
+      setBraveKey("");
       setAnthropicKey("");
       setOpenaiKey("");
       
@@ -94,27 +94,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Tavily Key */}
+            {/* Brave Search Key */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Tavily API Key</label>
-                <StatusBadge configured={status?.tavily_configured} />
+                <label className="text-sm font-medium">Brave Search API Key</label>
+                <StatusBadge configured={status?.brave_configured} />
               </div>
               <Input
                 type="password"
-                placeholder={status?.tavily_masked || "tvly-xxxxx"}
-                value={tavilyKey}
-                onChange={(e) => setTavilyKey(e.target.value)}
+                placeholder={status?.brave_masked || "BSA-xxxxxxxxxxxx"}
+                value={braveKey}
+                onChange={(e) => setBraveKey(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
                 Required for web search. Get yours at{" "}
                 <a
-                  href="https://tavily.com"
+                  href="https://api-dashboard.search.brave.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-vinyl-gold hover:underline"
                 >
-                  tavily.com
+                  api-dashboard.search.brave.com
                 </a>
               </p>
             </div>

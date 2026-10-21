@@ -9,7 +9,7 @@ A full-stack web application to catalog, search, and enrich your physical Music 
 
 - **3D Jewel Case Grid** — Interactive CD collection display with realistic plastic effects
 - **Smart Search** — Multi-field fuzzy search with PostgreSQL pg_trgm
-- **AI-Powered Enrichment** — Deep Agent generates comprehensive Digital Liner Notes using LangChain + Tavily
+- **AI-Powered Enrichment** — Deep Agent generates comprehensive Digital Liner Notes using LangChain + Brave Search
 - **CSV Import** — Drag-and-drop bulk upload with automatic deduplication
 - **Cover Art Fetching** — Automatic album art from MusicBrainz/Cover Art Archive
 - **Encrypted API Keys** — Secure configuration vault using Fernet encryption
@@ -20,7 +20,7 @@ A full-stack web application to catalog, search, and enrich your physical Music 
 ### Backend (`/backend`)
 - **Framework:** FastAPI + SQLAlchemy 2.0 (asyncpg)
 - **Database:** PostgreSQL 16 with `pgvector` and `pg_trgm` extensions
-- **AI Stack:** LangChain, LangGraph, Tavily, Claude/GPT-4o
+- **AI Stack:** LangChain, LangGraph, Brave Search, Claude/GPT-4o
 - **Features:**
   - Dynamic API key resolution (DB → Headers → Env)
   - Server-Sent Events (SSE) streaming for AI enrichment
@@ -137,7 +137,7 @@ Stores encrypted API keys and configuration.
 ### API Keys (Settings Modal)
 1. Click the ⚙️ settings icon in the header
 2. Add your API keys:
-   - **Tavily API Key:** For web search (required)
+   - **Brave Search API Key:** For web search (required)
    - **Anthropic API Key:** For Claude models
    - **OpenAI API Key:** For GPT models
 3. Select your preferred LLM model
@@ -194,7 +194,7 @@ MIT
 
 - **MusicBrainz** for album metadata
 - **Cover Art Archive** for album artwork
-- **Tavily** for web search API
+- **Brave Search** for web search API
 - **shadcn/ui** for beautiful components
 - **LangChain** for AI orchestration
 

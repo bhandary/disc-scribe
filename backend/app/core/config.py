@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/discvault"
     ENCRYPTION_SECRET: str = ""
-    TAVILY_API_KEY: Optional[str] = None
+    BRAVE_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     LLM_MODEL: str = "claude-haiku-5-5"
@@ -34,30 +34,30 @@ async def get_runtime_keys(db, request_headers: Dict[str, str]) -> Dict[str, Opt
     """
     Resolve API keys with priority:
     1. Encrypted keys from app_settings DB table
-    2. Custom request headers (X-Tavily-Key, X-LLM-Key, X-Anthropic-Key, X-OpenAI-Key)
+    2. Custom request headers (X-Brave-Key, X-LLM-Model, X-Anthropic-Key, X-OpenAI-Key)
     3. Server environment variables
     """
     from app.models.app_settings import AppSetting
     from sqlalchemy import select
-    
+
     keys = {
-        "tavily": None,
+        "brave": None,
         "anthropic": None,
         "openai": None,
         "llm_model": settings.LLM_MODEL,
     }
-    
+
     # Priority 1: Database encrypted keys
     result = await db.execute(select(AppSetting))
     db_settings = {row.key_name: row for row in result.scalars().all()}
-    
+
     fernet = settings.get_fernet()
-    
+
     for key_name, setting in db_settings.items():
         try:
             decrypted = fernet.decrypt(setting.encrypted_value.encode()).decode()
-            if key_name == "TAVILY_API_KEY":
-                keys["tavily"] = decrypted
+            if key_name == "BRAVE_API_KEY":
+                keys["brave"] = decrypted
             elif key_name == "ANTHROPIC_API_KEY":
                 keys["anthropic"] = decrypted
             elif key_name == "OPENAI_API_KEY":
@@ -66,25 +66,25 @@ async def get_runtime_keys(db, request_headers: Dict[str, str]) -> Dict[str, Opt
                 keys["llm_model"] = decrypted
         except Exception:
             pass
-    
+
     # Priority 2: Request headers
-    if "x-tavily-key" in request_headers:
-        keys["tavily"] = request_headers["x-tavily-key"]
+    if "x-brave-key" in request_headers:
+        keys["brave"] = request_headers["x-brave-key"]
     if "x-anthropic-key" in request_headers:
         keys["anthropic"] = request_headers["x-anthropic-key"]
     if "x-openai-key" in request_headers:
         keys["openai"] = request_headers["x-openai-key"]
     if "x-llm-model" in request_headers:
         keys["llm_model"] = request_headers["x-llm-model"]
-    
+
     # Priority 3: Environment variables (fallback)
-    if not keys["tavily"]:
-        keys["tavily"] = settings.TAVILY_API_KEY
+    if not keys["brave"]:
+        keys["brave"] = settings.BRAVE_API_KEY
     if not keys["anthropic"]:
         keys["anthropic"] = settings.ANTHROPIC_API_KEY
     if not keys["openai"]:
         keys["openai"] = settings.OPENAI_API_KEY
-    
+
     return keys
 
 

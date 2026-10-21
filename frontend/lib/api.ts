@@ -25,8 +25,8 @@ export interface SearchResponse {
 }
 
 export interface APIKeyStatus {
-  tavily_configured: boolean;
-  tavily_masked: string;
+  brave_configured: boolean;
+  brave_masked: string;
   anthropic_configured: boolean;
   anthropic_masked: string;
   openai_configured: boolean;
@@ -86,7 +86,7 @@ export const api = {
   },
 
   async updateAPIKeys(keys: {
-    tavily_api_key?: string;
+    brave_api_key?: string;
     anthropic_api_key?: string;
     openai_api_key?: string;
     llm_model?: string;

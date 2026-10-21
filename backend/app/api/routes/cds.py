@@ -285,8 +285,8 @@ async def enrich_cd_stream(
     headers = dict(request.headers)
     keys = await get_runtime_keys(db, headers)
     
-    if not keys["tavily"]:
-        raise HTTPException(status_code=400, detail="Tavily API key not configured")
+    if not keys["brave"]:
+        raise HTTPException(status_code=400, detail="Brave Search API key not configured")
     
     if not keys["anthropic"] and not keys["openai"]:
         raise HTTPException(status_code=400, detail="LLM API key not configured")
@@ -295,7 +295,7 @@ async def enrich_cd_stream(
         try:
             # Initialize Deep Agent
             enricher = DeepAgentEnricher(
-                tavily_key=keys["tavily"],
+                brave_key=keys["brave"],
                 anthropic_key=keys["anthropic"],
                 openai_key=keys["openai"],
                 model=keys["llm_model"]

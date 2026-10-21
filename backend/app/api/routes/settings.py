@@ -21,8 +21,8 @@ async def get_api_key_status(
     keys = await get_runtime_keys(db, headers)
     
     return APIKeyStatus(
-        tavily_configured=keys["tavily"] is not None,
-        tavily_masked=mask_api_key(keys["tavily"]),
+        brave_configured=keys["brave"] is not None,
+        brave_masked=mask_api_key(keys["brave"]),
         anthropic_configured=keys["anthropic"] is not None,
         anthropic_masked=mask_api_key(keys["anthropic"]),
         openai_configured=keys["openai"] is not None,
@@ -41,19 +41,19 @@ async def update_api_keys(
     fernet = settings.get_fernet()
     updated_keys = []
     
-    # Update Tavily key
-    if key_update.tavily_api_key:
-        encrypted = fernet.encrypt(key_update.tavily_api_key.encode()).decode()
-        stmt = select(AppSetting).where(AppSetting.key_name == "TAVILY_API_KEY")
+    # Update Brave Search key
+    if key_update.brave_api_key:
+        encrypted = fernet.encrypt(key_update.brave_api_key.encode()).decode()
+        stmt = select(AppSetting).where(AppSetting.key_name == "BRAVE_API_KEY")
         result = await db.execute(stmt)
         setting = result.scalar_one_or_none()
-        
+
         if setting:
             setting.encrypted_value = encrypted
         else:
-            setting = AppSetting(key_name="TAVILY_API_KEY", encrypted_value=encrypted)
+            setting = AppSetting(key_name="BRAVE_API_KEY", encrypted_value=encrypted)
             db.add(setting)
-        updated_keys.append("TAVILY_API_KEY")
+        updated_keys.append("BRAVE_API_KEY")
     
     # Update Anthropic key
     if key_update.anthropic_api_key:
