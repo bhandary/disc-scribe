@@ -8,7 +8,7 @@ import io
 from sse_starlette.sse import EventSourceResponse
 import asyncio
 
-from app.core.database import get_db
+from app.core.database import get_db, AsyncSessionLocal
 from app.models.cd import CD
 from app.schemas.cd import CDCreate, CDResponse, CDSearchResponse
 from app.services.musicbrainz import MusicBrainzService
@@ -99,10 +99,11 @@ async def upload_csv(
             })
     
     await db.commit()
-    
-    # Trigger background task for cover art (simplified - in production use celery/arq)
-    asyncio.create_task(fetch_missing_cover_art(db))
-    
+
+    # Fire-and-forget cover-art fetch using its OWN session, so it survives
+    # request teardown and backend reloads cancel it cleanly.
+    asyncio.create_task(fetch_missing_cover_art(limit=None))
+
     return {
         "inserted": inserted,
         "updated": updated,
@@ -110,21 +111,70 @@ async def upload_csv(
     }
 
 
-async def fetch_missing_cover_art(db: AsyncSession):
-    """Background task to fetch missing cover art"""
+@router.post("/refresh-covers")
+async def refresh_covers(
+    limit: Optional[int] = Query(None, ge=1, le=1000, description="Max CDs to process (default: all missing)"),
+    background: bool = Query(True, description="Run in background (returns immediately) vs inline"),
+):
+    """
+    Manually (re)trigger cover-art fetching for all CDs whose cover_art_url IS NULL.
+    By default runs in the background and returns immediately with the count queued.
+    Set background=false to wait for completion and get a precise fetched count.
+    """
+    async with AsyncSessionLocal() as session:
+        stmt = select(func.count()).select_from(CD).where(CD.cover_art_url.is_(None))
+        pending = (await session.execute(stmt)).scalar_one()
+
+    if pending == 0:
+        return {"pending": 0, "message": "All CDs already have cover art"}
+
+    to_process = pending if limit is None else min(limit, pending)
+
+    if background:
+        asyncio.create_task(fetch_missing_cover_art(limit=limit))
+        return {"pending": pending, "queued": to_process, "mode": "background"}
+
+    fetched = await fetch_missing_cover_art(limit=limit)
+    return {"pending": pending, "queued": to_process, "fetched": fetched, "mode": "inline"}
+
+
+async def fetch_missing_cover_art(limit: Optional[int] = None) -> int:
+    """
+    Background worker: fetches cover art for CDs where cover_art_url IS NULL.
+    Uses its OWN AsyncSession (not a request-scoped one) so it survives request
+    teardown. Commits per-CD so partial progress persists if the task is cancelled.
+    Returns the number of covers successfully fetched.
+    """
+    fetched = 0
     try:
-        stmt = select(CD).where(CD.cover_art_url.is_(None)).limit(50)
-        result = await db.execute(stmt)
-        cds = result.scalars().all()
-        
-        for cd in cds:
-            cover_url = await MusicBrainzService.fetch_cover_art(cd.artist, cd.album_name)
-            if cover_url:
-                cd.cover_art_url = cover_url
-                await db.commit()
-                await asyncio.sleep(2)  # Rate limiting
+        async with AsyncSessionLocal() as session:
+            stmt = select(CD).where(CD.cover_art_url.is_(None)).order_by(CD.created_at)
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            cds = (await session.execute(stmt)).scalars().all()
+
+            for cd in cds:
+                try:
+                    cover_url = await MusicBrainzService.fetch_cover_art(cd.artist, cd.album_name)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    print(f"Cover fetch unexpected error for {cd.artist} - {cd.album_name}: {type(e).__name__}: {e}")
+                    cover_url = None
+
+                if cover_url:
+                    cd.cover_art_url = cover_url
+                    await session.commit()
+                    fetched += 1
+                # MusicBrainzService already sleeps between its own calls; this is
+                # extra breathing room between CDs to stay well under rate limits.
+                await asyncio.sleep(0.5)
+    except asyncio.CancelledError:
+        print(f"fetch_missing_cover_art cancelled after {fetched} covers")
+        raise
     except Exception as e:
-        print(f"Cover art fetch error: {e}")
+        print(f"fetch_missing_cover_art fatal error after {fetched} covers: {type(e).__name__}: {e}")
+    return fetched
 
 
 @router.get("/search", response_model=CDSearchResponse)
