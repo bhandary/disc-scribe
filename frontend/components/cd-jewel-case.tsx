@@ -32,8 +32,8 @@ export function CDJewelCase({ cd, onClick }: CDJewelCaseProps) {
               className="w-full h-full object-cover rounded"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 rounded">
-              <Disc3 className="w-16 h-16 text-vinyl-gold/20" />
+            <div className="w-full h-full flex items-center justify-center bg-muted rounded">
+              <Disc3 className="w-16 h-16 text-muted-foreground/40" />
             </div>
           )}
           
@@ -46,13 +46,13 @@ export function CDJewelCase({ cd, onClick }: CDJewelCaseProps) {
             whileHover={{ opacity: 1 }}
             className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded"
           >
-            <Play className="w-12 h-12 text-vinyl-gold" />
+            <Play className="w-12 h-12 text-white" />
           </motion.div>
         </div>
         
         {/* Multi-disc badge */}
         {cd.num_discs > 1 && (
-          <div className="absolute top-2 right-2 bg-vinyl-gold text-vinyl-obsidian text-xs font-bold px-2 py-1 rounded shadow-lg">
+          <div className="absolute top-2 right-2 bg-primary text-primary-foreground text-xs font-bold px-2 py-1 rounded shadow-sm">
             {cd.num_discs}xCD
           </div>
         )}
@@ -65,12 +65,12 @@ export function CDJewelCase({ cd, onClick }: CDJewelCaseProps) {
       
       {/* Info */}
       <div className="mt-3 space-y-1">
-        <h3 className="font-semibold text-sm truncate group-hover:text-vinyl-gold transition-colors">
+        <h3 className="font-semibold text-sm truncate group-hover:text-accent transition-colors">
           {cd.album_name}
         </h3>
         <p className="text-xs text-muted-foreground truncate">{cd.artist}</p>
         <div className="flex items-center gap-2 text-xs">
-          <span className="px-2 py-0.5 bg-white/5 rounded">{cd.genre}</span>
+          <span className="px-2 py-0.5 bg-muted rounded-full">{cd.genre}</span>
           {cd.release_year && (
             <span className="text-muted-foreground">{cd.release_year}</span>
           )}

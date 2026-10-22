@@ -102,7 +102,7 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={PLACEHOLDERS[activeFilter]}
-          className="pl-10 h-12 text-base glass border-white/20 focus:border-vinyl-gold"
+          className="pl-10 h-12 text-base bg-white border-black/10 focus:border-accent rounded-full"
         />
       </div>
       
@@ -116,8 +116,8 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
             className={cn(
               "px-4 py-1.5 rounded-full text-sm font-medium transition-all",
               activeFilter === filter.value
-                ? "bg-vinyl-gold text-vinyl-obsidian shadow-lg shadow-amber-900/30"
-                : "bg-white/5 text-foreground hover:bg-white/10 border border-white/10"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-white text-foreground hover:bg-muted border border-black/10"
             )}
           >
             {filter.label}
@@ -126,7 +126,7 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
       </div>
 
       {activeFilter !== "all" && (
-        <div className="max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-white/5 p-2">
+        <div className="max-h-40 overflow-y-auto rounded-2xl border border-black/10 bg-white p-2">
           {isLoadingFacets ? (
             <p className="px-2 py-1 text-xs text-muted-foreground">Loading {activeFilter}s…</p>
           ) : visibleFacets.length === 0 ? (
@@ -144,8 +144,8 @@ export function SearchBar({ onSearch, className }: SearchBarProps) {
                   className={cn(
                     "px-3 py-1 rounded-full text-xs transition-all border",
                     query === facet.value
-                      ? "bg-vinyl-gold text-vinyl-obsidian border-transparent"
-                      : "bg-black/20 text-foreground border-white/10 hover:bg-white/10"
+                      ? "bg-primary text-primary-foreground border-transparent"
+                      : "bg-muted text-foreground border-black/5 hover:bg-[#dce4dc]"
                   )}
                 >
                   {facet.value}

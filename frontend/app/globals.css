@@ -15,15 +15,14 @@
 
 @layer utilities {
   .glass {
-    @apply bg-zinc-900/70 backdrop-blur-xl;
+    @apply bg-white/80 backdrop-blur-xl;
   }
   
   .jewel-case {
-    @apply relative rounded-lg border border-white/10 bg-gradient-to-br from-zinc-900 to-zinc-950 shadow-2xl;
+    @apply relative rounded-2xl border border-black/5 bg-white shadow-[0_8px_24px_rgba(26,33,28,0.06)];
   }
   
   .jewel-spine {
-    @apply absolute left-0 top-0 h-full w-2 bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-900;
-    box-shadow: inset -1px 0 2px rgba(0, 0, 0, 0.5);
+    @apply absolute left-0 top-0 h-full w-1.5 rounded-l-2xl bg-gradient-to-b from-[#4A1C2A] via-[#1E3A5F] to-[#1B4D3E];
   }
 }

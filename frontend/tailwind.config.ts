@@ -10,41 +10,41 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#090A0F",
-        foreground: "#F8FAFC",
+        background: "#F3F6F2",
+        foreground: "#1A211C",
         vinyl: {
-          gold: "#F59E0B",
-          silver: "#94A3B8",
-          obsidian: "#0F172A",
+          gold: "#1F2A24",
+          silver: "#6B7A72",
+          obsidian: "#F7FAF6",
         },
-        border: "rgba(255, 255, 255, 0.1)",
-        input: "rgba(255, 255, 255, 0.05)",
-        ring: "#F59E0B",
+        border: "rgba(31, 42, 36, 0.10)",
+        input: "#FFFFFF",
+        ring: "#1B4D3E",
         primary: {
-          DEFAULT: "#F59E0B",
-          foreground: "#0F172A",
+          DEFAULT: "#1F2A24",
+          foreground: "#F7FAF6",
         },
         secondary: {
-          DEFAULT: "rgba(255, 255, 255, 0.1)",
-          foreground: "#F8FAFC",
+          DEFAULT: "#FFFFFF",
+          foreground: "#1A211C",
         },
         muted: {
-          DEFAULT: "rgba(255, 255, 255, 0.05)",
-          foreground: "#94A3B8",
+          DEFAULT: "#E6EBE6",
+          foreground: "#6B7A72",
         },
         accent: {
-          DEFAULT: "#F59E0B",
-          foreground: "#0F172A",
+          DEFAULT: "#1B4D3E",
+          foreground: "#F7FAF6",
         },
         destructive: {
-          DEFAULT: "#DC2626",
-          foreground: "#F8FAFC",
+          DEFAULT: "#B42318",
+          foreground: "#FFFFFF",
         },
       },
       borderRadius: {
-        lg: "0.75rem",
-        md: "0.5rem",
-        sm: "0.375rem",
+        lg: "1rem",
+        md: "0.75rem",
+        sm: "0.5rem",
       },
       backdropBlur: {
         glass: "24px",

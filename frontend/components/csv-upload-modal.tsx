@@ -128,8 +128,8 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
               className={cn(
                 "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all",
                 isDragActive
-                  ? "border-vinyl-gold bg-vinyl-gold/10"
-                  : "border-white/20 hover:border-white/40 hover:bg-white/5"
+                  ? "border-accent bg-accent/10"
+                  : "border-black/15 hover:border-black/30 hover:bg-muted"
               )}
             >
               <input {...getInputProps()} />
@@ -144,8 +144,8 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
           {/* File info and preview */}
           {file && !uploadResult && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-white/5 rounded-lg">
-                <FileText className="w-8 h-8 text-vinyl-gold" />
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                <FileText className="w-8 h-8 text-accent" />
                 <div className="flex-1">
                   <p className="font-medium">{file.name}</p>
                   <p className="text-xs text-muted-foreground">
@@ -166,15 +166,15 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
 
               {/* Preview table */}
               {preview.length > 0 && (
-                <div className="border border-white/10 rounded-lg overflow-hidden">
-                  <div className="bg-white/5 px-3 py-2 border-b border-white/10">
+                <div className="border border-black/10 rounded-lg overflow-hidden">
+                  <div className="bg-muted px-3 py-2 border-b border-black/10">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Preview (first 5 rows)
                     </p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-white/5">
+                      <thead className="bg-muted">
                         <tr>
                           <th className="px-3 py-2 text-left font-medium">Artist</th>
                           <th className="px-3 py-2 text-left font-medium">Album</th>
@@ -185,7 +185,7 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
                       </thead>
                       <tbody>
                         {preview.map((row, idx) => (
-                          <tr key={idx} className="border-t border-white/5">
+                          <tr key={idx} className="border-t border-black/5">
                             <td className="px-3 py-2">{row.artist}</td>
                             <td className="px-3 py-2">{row.album_name}</td>
                             <td className="px-3 py-2 text-muted-foreground">
@@ -214,8 +214,8 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
           {/* Upload result */}
           {uploadResult && (
             <div className="space-y-3">
-              <div className="flex items-start gap-3 p-4 bg-vinyl-gold/10 border border-vinyl-gold/20 rounded-lg">
-                <CheckCircle2 className="w-6 h-6 text-vinyl-gold flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-4 bg-accent/10 border border-accent/20 rounded-lg">
+                <CheckCircle2 className="w-6 h-6 text-accent flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="font-medium">Upload Complete!</p>
                   <p className="text-sm text-muted-foreground mt-1">

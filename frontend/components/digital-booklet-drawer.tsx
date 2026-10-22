@@ -152,7 +152,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
           />
           
           {/* Drawer */}
@@ -161,7 +161,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 h-full w-full md:w-2/3 lg:w-1/2 glass border-l border-white/10 z-50 overflow-y-auto"
+            className="fixed right-0 top-0 h-full w-full md:w-2/3 lg:w-1/2 bg-white border-l border-black/10 z-50 overflow-y-auto"
           >
             <div className="p-6 space-y-6">
               {/* Header */}
@@ -174,8 +174,8 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
                       className="w-20 h-20 rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="w-20 h-20 rounded-lg bg-zinc-800 flex items-center justify-center">
-                      <Disc3 className="w-8 h-8 text-vinyl-gold/20" />
+                    <div className="w-20 h-20 rounded-lg bg-muted flex items-center justify-center">
+                      <Disc3 className="w-8 h-8 text-muted-foreground/40" />
                     </div>
                   )}
                   <div>
@@ -193,7 +193,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
 
               {/* Activity Stepper */}
               {enrichmentState.status !== "complete" && enrichmentState.status !== "idle" && (
-                <div className="glass border border-white/10 rounded-lg p-4">
+                <div className="bg-muted border border-black/5 rounded-2xl p-4">
                   <div className="flex items-center gap-3">
                     {enrichmentState.status === "error" ? (
                       <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
@@ -217,7 +217,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
 
               {/* Content */}
               {enrichmentState.content && (
-                <div className="prose prose-invert prose-amber max-w-none">
+                <div className="prose prose-neutral max-w-none">
                   <ReactMarkdown>{enrichmentState.content}</ReactMarkdown>
                 </div>
               )}
@@ -235,7 +235,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
                         href={source.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-xs transition-colors"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-muted hover:bg-[#dce4dc] border border-black/5 rounded-full text-xs transition-colors"
                       >
                         <span className="truncate max-w-[200px]">{source.title}</span>
                         <ExternalLink className="w-3 h-3 flex-shrink-0" />
