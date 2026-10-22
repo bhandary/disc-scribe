@@ -91,7 +91,16 @@ export function BarcodeScanModal({
         }
 
         const rear = cameras.find((cam) => /back|rear|environment/i.test(cam.label));
-        const scanner = new Html5Qrcode("barcode-reader");
+        const scanner = new Html5Qrcode("barcode-reader", {
+          verbose: false,
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+          ],
+        });
         scannerRef.current = scanner;
         await scanner.start(
           rear?.id || cameras[0].id,
@@ -99,13 +108,6 @@ export function BarcodeScanModal({
             fps: 8,
             qrbox: { width: 260, height: 120 },
             aspectRatio: 1.777,
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.CODE_128,
-            ],
           },
           (text) => {
             if (!cancelled) {

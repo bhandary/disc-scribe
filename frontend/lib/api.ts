@@ -139,6 +139,11 @@ export const api = {
     return response.json();
   },
 
+  async deleteCD(id: string): Promise<void> {
+    const response = await fetch(`${API_URL}/api/cds/${id}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("Failed to delete CD");
+  },
+
   async uploadCSV(file: File): Promise<{
     inserted: number;
     updated: number;

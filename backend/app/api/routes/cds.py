@@ -499,3 +499,18 @@ async def get_cd(
         raise HTTPException(status_code=404, detail="CD not found")
     
     return _to_response(cd)
+
+
+@router.delete("/{cd_id}", status_code=204)
+async def delete_cd(
+    cd_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a CD from the collection."""
+    result = await db.execute(select(CD).where(CD.id == cd_id))
+    cd = result.scalar_one_or_none()
+    if not cd:
+        raise HTTPException(status_code=404, detail="CD not found")
+
+    await db.delete(cd)
+    await db.commit()

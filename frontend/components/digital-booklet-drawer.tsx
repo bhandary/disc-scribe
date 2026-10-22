@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Loader2, RefreshCw, Disc3 } from "lucide-react";
+import { X, Loader2, RefreshCw, Disc3, Trash2 } from "lucide-react";
 import { CD, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
@@ -20,6 +20,7 @@ interface DigitalBookletDrawerProps {
   cd: CD | null;
   isOpen: boolean;
   onClose: () => void;
+  onDeleted?: (id: string) => void;
 }
 
 interface EnrichmentState {
@@ -29,13 +30,16 @@ interface EnrichmentState {
   sources: Array<{ title: string; url: string }>;
 }
 
-export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDrawerProps) {
+export function DigitalBookletDrawer({ cd, isOpen, onClose, onDeleted }: DigitalBookletDrawerProps) {
   const [enrichmentState, setEnrichmentState] = useState<EnrichmentState>({
     status: "idle",
     message: "",
     content: "",
     sources: [],
   });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const startEnrichment = (cdId: string) => {
     setEnrichmentState({
@@ -133,6 +137,31 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
       eventSource.close();
     };
   };
+
+  const handleDelete = async () => {
+    if (!cd) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteCD(cd.id);
+      onDeleted?.(cd.id);
+      onClose();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Failed to delete album");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  useEffect(() => {
+    setConfirmDelete(false);
+    setDeleteError(null);
+    setIsDeleting(false);
+  }, [cd?.id, isOpen]);
 
   useEffect(() => {
     if (cd && isOpen) {
@@ -242,6 +271,34 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
                   Regenerate Insights
                 </Button>
               )}
+
+              <div className="pt-2 border-t border-black/5 space-y-2">
+                {deleteError && (
+                  <p className="text-sm text-red-600">{deleteError}</p>
+                )}
+                <Button
+                  onClick={handleDelete}
+                  variant="destructive"
+                  className="w-full"
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4 mr-2" />
+                  )}
+                  {confirmDelete ? "Remove from The Rack?" : "Delete album"}
+                </Button>
+                {confirmDelete && !isDeleting && (
+                  <Button
+                    onClick={() => setConfirmDelete(false)}
+                    variant="ghost"
+                    className="w-full"
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
             </div>
           </motion.div>
         </>

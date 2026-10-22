@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Upload, Settings, Disc3, Loader2 } from "lucide-react";
+import { Upload, Settings, Disc3, Loader2, ScanBarcode } from "lucide-react";
 import { CDJewelCase } from "@/components/cd-jewel-case";
 import { SearchBar, SearchFilter } from "@/components/search-bar";
 import { DigitalBookletDrawer } from "@/components/digital-booklet-drawer";
 import { CSVUploadModal } from "@/components/csv-upload-modal";
+import { BarcodeScanModal } from "@/components/barcode-scan-modal";
 import { SettingsModal } from "@/components/settings-modal";
 import { Button } from "@/components/ui/button";
 import { api, CD } from "@/lib/api";
@@ -15,6 +16,7 @@ export default function Home() {
   const [selectedCD, setSelectedCD] = useState<CD | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,6 +75,22 @@ export default function Home() {
     loadCDs();
   };
 
+  const handleScanned = (cd: CD) => {
+    setSelectedCD(cd);
+    setIsDrawerOpen(true);
+    loadCDs();
+  };
+
+  const handleViewExisting = async (id: string) => {
+    try {
+      const cd = await api.getCD(id);
+      setSelectedCD(cd);
+      setIsDrawerOpen(true);
+    } catch (error) {
+      console.error("Failed to load scanned CD:", error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -91,6 +109,13 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                onClick={() => setIsScanModalOpen(true)}
+                size="sm"
+              >
+                <ScanBarcode className="w-4 h-4 mr-2" />
+                Scan barcode
+              </Button>
               <Button
                 onClick={() => setIsUploadModalOpen(true)}
                 variant="secondary"
@@ -138,12 +163,18 @@ export default function Home() {
               <p className="text-muted-foreground mb-6">
                 {searchQuery
                   ? "Try a different search term"
-                  : "Start by importing your collection"}
+                  : "Scan a CD barcode or import your collection"}
               </p>
-              <Button onClick={() => setIsUploadModalOpen(true)}>
-                <Upload className="w-4 h-4 mr-2" />
-                Import CSV
-              </Button>
+              <div className="flex items-center justify-center gap-2">
+                <Button onClick={() => setIsScanModalOpen(true)}>
+                  <ScanBarcode className="w-4 h-4 mr-2" />
+                  Scan barcode
+                </Button>
+                <Button onClick={() => setIsUploadModalOpen(true)} variant="secondary">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import CSV
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
@@ -185,6 +216,16 @@ export default function Home() {
         cd={selectedCD}
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
+        onDeleted={() => {
+          setSelectedCD(null);
+          loadCDs();
+        }}
+      />
+      <BarcodeScanModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        onAdded={handleScanned}
+        onViewExisting={handleViewExisting}
       />
       <CSVUploadModal
         isOpen={isUploadModalOpen}
