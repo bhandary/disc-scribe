@@ -1,4 +1,13 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Empty in production so the browser stays same-origin and Next.js rewrites
+// /api/* to the backend (BACKEND_URL). Locally, next.config.ts rewrites to
+// http://localhost:8000 unless NEXT_PUBLIC_API_URL is set.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+export interface Track {
+  position: string;
+  title: string;
+  duration?: string;
+}
 
 export interface CD {
   id: string;
@@ -9,11 +18,30 @@ export interface CD {
   num_discs: number;
   cover_art_url?: string;
   release_year?: number;
+  barcode?: string;
+  label?: string;
+  tracks?: Track[];
   ai_summary?: string;
   ai_sources?: Array<{ title: string; url: string }>;
   created_at: string;
   updated_at: string;
   needs_enrichment: boolean;
+}
+
+export interface BarcodeLookup {
+  barcode: string;
+  artist: string;
+  album_name: string;
+  lyricist?: string;
+  genre: string;
+  num_discs: number;
+  cover_art_url?: string;
+  release_year?: number;
+  label?: string;
+  tracks: Track[];
+  source: "musicbrainz" | "discogs";
+  already_in_collection: boolean;
+  existing_id?: string;
 }
 
 export interface SearchResponse {
@@ -62,6 +90,46 @@ export const api = {
   }> {
     const response = await fetch(`${API_URL}/api/cds/facets?field=${encodeURIComponent(field)}`);
     if (!response.ok) throw new Error("Failed to fetch filters");
+    return response.json();
+  },
+
+  async lookupBarcode(barcode: string): Promise<BarcodeLookup> {
+    const response = await fetch(
+      `${API_URL}/api/cds/lookup-barcode?barcode=${encodeURIComponent(barcode)}`
+    );
+    if (response.status === 404) {
+      throw new Error("No album found for that barcode");
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.detail || "Lookup failed");
+    }
+    return response.json();
+  },
+
+  async addFromBarcode(barcode: string): Promise<CD> {
+    const response = await fetch(`${API_URL}/api/cds/from-barcode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ barcode }),
+    });
+    if (response.status === 409) {
+      const body = await response.json().catch(() => null);
+      const error = new Error(body?.detail?.message || "Already in your collection") as Error & {
+        code?: number;
+        existingId?: string;
+      };
+      error.code = 409;
+      error.existingId = body?.detail?.id;
+      throw error;
+    }
+    if (response.status === 404) {
+      throw new Error("No album found for that barcode");
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(typeof body?.detail === "string" ? body.detail : "Could not add CD");
+    }
     return response.json();
   },
 

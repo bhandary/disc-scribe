@@ -1,11 +1,31 @@
 from typing import Optional, Dict, Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from cryptography.fernet import Fernet
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+import base64
+import hashlib
 import os
 
 
+def normalize_database_url(url: str) -> str:
+    """Accept Railway's postgres:// URL and make it usable with asyncpg."""
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://") and "+asyncpg" not in url.split("://", 1)[0]:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    sslmode = query.pop("sslmode", None)
+    query.pop("channel_binding", None)
+    if sslmode in {"require", "verify-ca", "verify-full"}:
+        query["ssl"] = "require"
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
     
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/discvault"
     ENCRYPTION_SECRET: str = ""
@@ -13,18 +33,40 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     LLM_MODEL: str = "claude-haiku-5-5"
-    CORS_ORIGINS: str = "http://localhost:3000"
+    DISCOGS_TOKEN: Optional[str] = None
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
+    FRONTEND_URL: Optional[str] = None
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_db_url(cls, value: str) -> str:
+        return normalize_database_url(value or "")
     
     @property
     def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        origins = [origin.strip().rstrip("/") for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        if self.FRONTEND_URL:
+            frontend = self.FRONTEND_URL.strip().rstrip("/")
+            if frontend and not frontend.startswith("http"):
+                frontend = f"https://{frontend}"
+            if frontend:
+                origins.append(frontend)
+        return list(dict.fromkeys(origins))
     
     def get_fernet(self) -> Fernet:
         """Get Fernet cipher for encryption/decryption"""
-        if not self.ENCRYPTION_SECRET:
+        secret = self.ENCRYPTION_SECRET
+        if not secret:
+            if os.environ.get("RAILWAY_ENVIRONMENT"):
+                raise RuntimeError("ENCRYPTION_SECRET must be set on Railway")
             key = Fernet.generate_key()
             self.ENCRYPTION_SECRET = key.decode()
-        return Fernet(self.ENCRYPTION_SECRET.encode())
+            return Fernet(key)
+        try:
+            return Fernet(secret.encode() if isinstance(secret, str) else secret)
+        except Exception:
+            digest = hashlib.sha256(secret.encode()).digest()
+            return Fernet(base64.urlsafe_b64encode(digest))
 
 
 settings = Settings()

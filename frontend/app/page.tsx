@@ -84,7 +84,9 @@ export default function Home() {
                 <Disc3 className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">The Rack</h1>
+                <h1 className="font-display text-2xl italic font-semibold tracking-tight leading-none">
+                  The Rack
+                </h1>
               </div>
             </div>
 

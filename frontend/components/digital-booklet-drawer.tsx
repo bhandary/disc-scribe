@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Loader2, ExternalLink, RefreshCw, Disc3 } from "lucide-react";
+import { X, Loader2, RefreshCw, Disc3 } from "lucide-react";
 import { CD, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
+
+function displayLinerNotes(content: string): string {
+  return content
+    .replace(/^\s*#{1,6}\s*Digital Liner Notes:?\s*/i, "")
+    .replace(/^\s*\*{0,2}Digital Liner Notes:\*{0,2}\s*/i, "")
+    .replace(/\n+#{1,6}\s*Verified Sources\b[\s\S]*$/i, "")
+    .replace(/\n+\*{0,2}Verified Sources\*{0,2}\s*[\s\S]*$/i, "")
+    .trim();
+}
 
 interface DigitalBookletDrawerProps {
   cd: CD | null;
@@ -218,30 +227,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
               {/* Content */}
               {enrichmentState.content && (
                 <div className="prose prose-neutral max-w-none">
-                  <ReactMarkdown>{enrichmentState.content}</ReactMarkdown>
-                </div>
-              )}
-
-              {/* Sources */}
-              {enrichmentState.sources.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Verified Sources
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {enrichmentState.sources.map((source, idx) => (
-                      <a
-                        key={idx}
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-muted hover:bg-[#dce4dc] border border-black/5 rounded-full text-xs transition-colors"
-                      >
-                        <span className="truncate max-w-[200px]">{source.title}</span>
-                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                      </a>
-                    ))}
-                  </div>
+                  <ReactMarkdown>{displayLinerNotes(enrichmentState.content)}</ReactMarkdown>
                 </div>
               )}
 

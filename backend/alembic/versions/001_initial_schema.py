@@ -19,8 +19,18 @@ depends_on = None
 def upgrade() -> None:
     # Enable extensions
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
-    op.execute('CREATE EXTENSION IF NOT EXISTS "vector"')
     op.execute('CREATE EXTENSION IF NOT EXISTS "pg_trgm"')
+    # pgvector is optional: local Docker has it, Railway's managed Postgres may not.
+    # embedding is stored as TEXT, so the app runs without the extension.
+    op.execute("""
+DO $$
+BEGIN
+    CREATE EXTENSION IF NOT EXISTS vector;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'pgvector extension not available, skipping';
+END
+$$;
+""")
     
     # Create cds table
     op.create_table(

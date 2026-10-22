@@ -1,12 +1,22 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import cds, settings as settings_routes
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    print(f"The Rack API starting. CORS origins: {settings.cors_origins_list}")
+    yield
+
+
 app = FastAPI(
     title="The Rack API",
     description="CD collection manager with AI-powered enrichment",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS

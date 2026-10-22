@@ -161,23 +161,46 @@ Required fields: `artist`, `album_name`, `genre`
 - **Jewel Case Cards** — Realistic spine ridges and plastic glare effects
 - **Smooth Animations** — Spring physics and hover tilts via Framer Motion
 
-## 🚢 Deployment
+## 🚢 Deployment (Railway)
 
-### Railway (Backend)
-```bash
-cd backend
-railway up
+The repo is a monorepo: **Postgres + FastAPI backend + Next.js frontend**.
+
+1. Create a Railway project from `https://github.com/bhandary/disc-scribe`.
+2. Add a **Postgres** plugin (default name `Postgres`).
+3. Create two services from the same repo:
+
+| Service | Root directory | Config |
+|---|---|---|
+| `backend` | `backend` | `backend/railway.json` |
+| `frontend` | `frontend` | `frontend/railway.json` |
+
+4. Generate a public domain on **both** services.
+5. Set variables:
+
+**backend**
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+ENCRYPTION_SECRET=<any long secret; required>
+CORS_ORIGINS=https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}
+FRONTEND_URL=https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}
+BRAVE_API_KEY=
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+LLM_MODEL=claude-haiku-5-5
+RAILPACK_PYTHON_VERSION=3.12
 ```
 
-Configure environment variables in Railway dashboard.
-
-### Vercel (Frontend)
-```bash
-cd frontend
-vercel
+**frontend**
+```
+BACKEND_URL=http://${{backend.RAILWAY_PRIVATE_DOMAIN}}:${{backend.PORT}}
+RAILPACK_NODE_VERSION=20
 ```
 
-Set `NEXT_PUBLIC_API_URL` to your Railway backend URL.
+Leave `NEXT_PUBLIC_API_URL` unset on Railway. The browser calls `/api/*` on the frontend; Next.js rewrites those requests to the backend over private networking.
+
+The backend runs `alembic upgrade head` on each deploy, then binds to `$PORT`. Railway's `postgres://` URL is accepted (converted to `postgresql+asyncpg://`). `pg_trgm` is required; `pgvector` is optional.
+
+API keys can also be added later in the in-app Settings modal. They are encrypted with `ENCRYPTION_SECRET` — changing that value after keys are saved makes them unreadable.
 
 ## 🧪 Development Tools
 

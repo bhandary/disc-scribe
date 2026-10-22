@@ -11,12 +11,63 @@ import json
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.models.cd import CD
-from app.schemas.cd import CDCreate, CDResponse, CDSearchResponse
+from app.schemas.cd import (
+    CDCreate,
+    CDResponse,
+    CDSearchResponse,
+    BarcodeLookupRequest,
+    BarcodeLookupResponse,
+)
 from app.services.musicbrainz import MusicBrainzService
+from app.services.barcode import BarcodeLookupService
 from app.services.deep_agent import DeepAgentEnricher
 from app.core.config import get_runtime_keys
 
 router = APIRouter(prefix="/api/cds", tags=["cds"])
+
+
+def _to_response(cd: CD) -> CDResponse:
+    return CDResponse(
+        id=cd.id,
+        artist=cd.artist,
+        album_name=cd.album_name,
+        lyricist=cd.lyricist,
+        genre=cd.genre,
+        num_discs=cd.num_discs,
+        cover_art_url=cd.cover_art_url,
+        release_year=cd.release_year,
+        barcode=cd.barcode,
+        label=cd.label,
+        tracks=cd.tracks,
+        ai_summary=cd.ai_summary,
+        ai_sources=cd.ai_sources,
+        created_at=cd.created_at,
+        updated_at=cd.updated_at,
+        needs_enrichment=cd.ai_summary is None,
+    )
+
+
+async def _find_existing(
+    db: AsyncSession,
+    *,
+    barcode: Optional[str] = None,
+    artist: Optional[str] = None,
+    album_name: Optional[str] = None,
+) -> Optional[CD]:
+    if barcode:
+        result = await db.execute(select(CD).where(CD.barcode == barcode))
+        existing = result.scalar_one_or_none()
+        if existing:
+            return existing
+    if artist and album_name:
+        result = await db.execute(
+            select(CD).where(
+                func.lower(CD.artist) == artist.lower(),
+                func.lower(CD.album_name) == album_name.lower(),
+            )
+        )
+        return result.scalar_one_or_none()
+    return None
 
 
 @router.post("/upload-csv")
@@ -235,7 +286,9 @@ async def search_cds(
                 CD.artist.ilike(q_lower),
                 CD.album_name.ilike(q_lower),
                 CD.lyricist.ilike(q_lower),
-                CD.genre.ilike(q_lower)
+                CD.genre.ilike(q_lower),
+                CD.barcode.ilike(q_lower),
+                CD.label.ilike(q_lower),
             )
         )
     
@@ -263,32 +316,9 @@ async def search_cds(
     count_result = await db.execute(count_stmt)
     total = count_result.scalar()
     
-    # Convert to response models
-    cd_responses = []
-    needs_enrichment_count = 0
-    
-    for cd in cds:
-        cd_dict = {
-            "id": cd.id,
-            "artist": cd.artist,
-            "album_name": cd.album_name,
-            "lyricist": cd.lyricist,
-            "genre": cd.genre,
-            "num_discs": cd.num_discs,
-            "cover_art_url": cd.cover_art_url,
-            "release_year": cd.release_year,
-            "ai_summary": cd.ai_summary,
-            "ai_sources": cd.ai_sources,
-            "created_at": cd.created_at,
-            "updated_at": cd.updated_at,
-            "needs_enrichment": cd.ai_summary is None
-        }
-        
-        if cd.ai_summary is None:
-            needs_enrichment_count += 1
-        
-        cd_responses.append(CDResponse(**cd_dict))
-    
+    cd_responses = [_to_response(cd) for cd in cds]
+    needs_enrichment_count = sum(1 for cd in cds if cd.ai_summary is None)
+
     return CDSearchResponse(
         cds=cd_responses,
         total=total,
@@ -296,6 +326,91 @@ async def search_cds(
         limit=limit,
         needs_enrichment_count=needs_enrichment_count
     )
+
+
+@router.get("/lookup-barcode", response_model=BarcodeLookupResponse)
+async def lookup_barcode(
+    barcode: str = Query(..., min_length=8, max_length=32),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a CD barcode via MusicBrainz, then Discogs."""
+    normalized = BarcodeLookupService.normalize(barcode)
+    if len(normalized) < 8:
+        raise HTTPException(status_code=400, detail="Barcode must contain at least 8 digits")
+
+    match = await BarcodeLookupService.lookup(normalized)
+    if not match:
+        raise HTTPException(status_code=404, detail="No album found for that barcode")
+
+    existing = await _find_existing(
+        db,
+        barcode=match.barcode,
+        artist=match.artist,
+        album_name=match.album_name,
+    )
+    return BarcodeLookupResponse(
+        barcode=match.barcode,
+        artist=match.artist,
+        album_name=match.album_name,
+        lyricist=match.lyricist,
+        genre=match.genre,
+        num_discs=match.num_discs,
+        cover_art_url=match.cover_art_url,
+        release_year=match.release_year,
+        label=match.label,
+        tracks=match.tracks,
+        source=match.source,
+        already_in_collection=existing is not None,
+        existing_id=existing.id if existing else None,
+    )
+
+
+@router.post("/from-barcode", response_model=CDResponse)
+async def add_from_barcode(
+    body: BarcodeLookupRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Look up a barcode and add the album to the collection."""
+    normalized = BarcodeLookupService.normalize(body.barcode)
+    if len(normalized) < 8:
+        raise HTTPException(status_code=400, detail="Barcode must contain at least 8 digits")
+
+    match = await BarcodeLookupService.lookup(normalized)
+    if not match:
+        raise HTTPException(status_code=404, detail="No album found for that barcode")
+
+    existing = await _find_existing(
+        db,
+        barcode=match.barcode,
+        artist=match.artist,
+        album_name=match.album_name,
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "Already in your collection", "id": str(existing.id)},
+        )
+
+    cd = CD(
+        artist=match.artist,
+        album_name=match.album_name,
+        lyricist=match.lyricist,
+        genre=match.genre,
+        num_discs=match.num_discs,
+        cover_art_url=match.cover_art_url,
+        release_year=match.release_year,
+        barcode=match.barcode,
+        label=match.label,
+        tracks=match.tracks or None,
+    )
+    db.add(cd)
+    await db.commit()
+    await db.refresh(cd)
+
+    if not cd.cover_art_url:
+        asyncio.create_task(fetch_missing_cover_art(limit=1))
+
+    return _to_response(cd)
 
 
 @router.get("/{cd_id}/enrich-stream")
@@ -383,7 +498,4 @@ async def get_cd(
     if not cd:
         raise HTTPException(status_code=404, detail="CD not found")
     
-    return CDResponse(
-        **cd.__dict__,
-        needs_enrichment=cd.ai_summary is None
-    )
+    return _to_response(cd)

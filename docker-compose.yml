@@ -27,7 +27,8 @@ services:
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      CORS_ORIGINS: http://localhost:3001,http://frontend:3001
+      CORS_ORIGINS: http://localhost:3001
+      FRONTEND_URL: http://localhost:3001
       PORT: 8000
     ports:
       - "8000:8000"
@@ -41,7 +42,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      BACKEND_URL: http://backend:8000
     ports:
       - "3001:3000"
     depends_on:

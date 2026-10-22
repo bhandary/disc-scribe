@@ -120,7 +120,8 @@ Your task:
    - **The Album Story** (recording context, production, reception)
    - **Lyricist & Songwriting Spotlight** (if lyricist is known)
    - **Hidden Trivia** (interesting facts)
-   - **Verified Sources** (list of URLs with titles)
+
+Do not title the report "Digital Liner Notes" and do not include a sources section.
 
 Be thorough but concise. Focus on verified information."""
 
@@ -168,13 +169,7 @@ Be thorough but concise. Focus on verified information."""
                     "data": {"query": query, "message": f"Brave Search error: {str(e)}"},
                 }
         
-        # Synthesize report
-        yield {
-            "type": "token",
-            "data": {"content": "\n\n# Digital Liner Notes\n\n"}
-        }
-        
-        synthesis_prompt = f"""Based on the following research results, write comprehensive Digital Liner Notes for "{album_name}" by {artist}{lyricist_text}.
+        synthesis_prompt = f"""Based on the following research results, write liner notes for "{album_name}" by {artist}{lyricist_text}.
 
 Research Results:
 {json.dumps(all_results, indent=2)}
@@ -183,7 +178,8 @@ Format your response as markdown with these sections:
 - **The Album Story**
 - **Lyricist & Songwriting Spotlight** (if lyricist info is available)
 - **Hidden Trivia**
-- **Verified Sources** (as a bullet list with titles and URLs)
+
+Do not start with "Digital Liner Notes" and do not include a sources list.
 
 Be engaging and informative."""
 
