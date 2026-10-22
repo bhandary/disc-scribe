@@ -1,4 +1,4 @@
-# DiscVault AI — Agentic CD Collection Manager
+# The Rack
 
 A full-stack web application to catalog, search, and enrich your physical Music CD collection with AI-powered insights.
 

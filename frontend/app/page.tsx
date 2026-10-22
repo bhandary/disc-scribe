@@ -84,8 +84,7 @@ export default function Home() {
                 <Disc3 className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">DiscVault AI</h1>
-                <p className="text-xs text-muted-foreground">Agentic CD Collection</p>
+                <h1 className="text-xl font-bold">The Rack</h1>
               </div>
             </div>
 

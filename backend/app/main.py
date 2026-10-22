@@ -4,8 +4,8 @@ from app.core.config import settings
 from app.api.routes import cds, settings as settings_routes
 
 app = FastAPI(
-    title="DiscVault AI API",
-    description="Agentic CD Collection Manager with AI-powered enrichment",
+    title="The Rack API",
+    description="CD collection manager with AI-powered enrichment",
     version="1.0.0"
 )
 
@@ -31,7 +31,7 @@ async def health_check():
 @app.get("/")
 async def root():
     return {
-        "service": "DiscVault AI API",
+        "service": "The Rack API",
         "version": "1.0.0",
         "docs": "/docs"
     }
