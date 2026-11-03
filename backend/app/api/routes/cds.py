@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, literal_column
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List, Optional
 from uuid import UUID
 import csv
 import io
+import uuid
+from datetime import datetime, timezone
 from sse_starlette.sse import EventSourceResponse
 import asyncio
 
@@ -16,6 +19,51 @@ from app.services.deep_agent import DeepAgentEnricher
 from app.core.config import get_runtime_keys
 
 router = APIRouter(prefix="/api/cds", tags=["cds"])
+
+
+async def _upsert_cd(
+    db: AsyncSession,
+    *,
+    artist: str,
+    album_name: str,
+    lyricist: Optional[str],
+    genre: str,
+    num_discs: int,
+) -> bool:
+    """Insert a CD or update the row that shares its lowercased artist and album.
+
+    The conflict target is the expression unique index uq_artist_album_lowercase.
+    A duplicate becomes an update of lyricist, genre, num_discs, and updated_at.
+    ai_summary, cover art, and the stored names stay as they were.
+    Returns True when this statement stored a new row. Postgres sets xmax
+    to 0 only on the insert path of ON CONFLICT DO UPDATE.
+    """
+    now = datetime.now(timezone.utc)
+    stmt = pg_insert(CD).values(
+        id=uuid.uuid4(),
+        artist=artist,
+        album_name=album_name,
+        lyricist=lyricist,
+        genre=genre,
+        num_discs=num_discs,
+        created_at=now,
+        updated_at=now,
+    )
+    excluded = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[
+            literal_column("lower(artist)"),
+            literal_column("lower(album_name)"),
+        ],
+        set_={
+            "lyricist": excluded.lyricist,
+            "genre": excluded.genre,
+            "num_discs": excluded.num_discs,
+            "updated_at": excluded.updated_at,
+        },
+    ).returning(literal_column("(xmax = 0)").label("inserted"))
+    result = await db.execute(stmt)
+    return bool(result.scalar())
 
 
 @router.post("/upload-csv")
@@ -40,16 +88,18 @@ async def upload_csv(
     inserted = 0
     updated = 0
     errors = []
+    pending = []
     
     for idx, row in enumerate(csv_reader, start=2):
         try:
             # Handle duplicate 'artist' columns by taking the first non-empty one
-            artist = row.get('artist', '').strip()
+            artist = (row.get('artist') or '').strip()
             
-            # Map flexible column names
-            album_name = row.get('album_name') or row.get('album', '').strip()
-            lyricist = row.get('lyricist', '').strip() or None
-            genre = row.get('genre', '').strip()
+            # Map flexible column names. Strip album_name the same way as artist
+            # so "Abbey Road" and "Abbey Road " share one catalog key.
+            album_name = (row.get('album_name') or row.get('album') or '').strip()
+            lyricist = (row.get('lyricist') or '').strip() or None
+            genre = (row.get('genre') or '').strip()
             num_discs_raw = row.get('num_discs') or row.get('discs', '1')
             
             if not artist or not album_name or not genre:
@@ -66,32 +116,32 @@ async def upload_csv(
             except ValueError:
                 num_discs = 1
             
-            # Check for existing CD
-            stmt = select(CD).where(
-                func.lower(CD.artist) == artist.lower(),
-                func.lower(CD.album_name) == album_name.lower()
-            )
-            result = await db.execute(stmt)
-            existing_cd = result.scalar_one_or_none()
+            pending.append((idx, artist, album_name, lyricist, genre, num_discs))
             
-            if existing_cd:
-                # Update
-                existing_cd.lyricist = lyricist
-                existing_cd.genre = genre
-                existing_cd.num_discs = num_discs
-                updated += 1
-            else:
-                # Insert
-                new_cd = CD(
-                    artist=artist,
-                    album_name=album_name,
-                    lyricist=lyricist,
-                    genre=genre,
-                    num_discs=num_discs
-                )
-                db.add(new_cd)
+        except Exception as e:
+            errors.append({
+                "row": idx,
+                "error": str(e)
+            })
+
+    # Same lock order in every request: LOWER(artist), LOWER(album_name).
+    # Two uploads can then wait on uq_artist_album_lowercase without deadlocking,
+    # and a conflict updates the row instead of aborting the rest of the file.
+    pending.sort(key=lambda item: (item[1].lower(), item[2].lower()))
+
+    for idx, artist, album_name, lyricist, genre, num_discs in pending:
+        try:
+            if await _upsert_cd(
+                db,
+                artist=artist,
+                album_name=album_name,
+                lyricist=lyricist,
+                genre=genre,
+                num_discs=num_discs,
+            ):
                 inserted += 1
-            
+            else:
+                updated += 1
         except Exception as e:
             errors.append({
                 "row": idx,
