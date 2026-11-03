@@ -9,6 +9,10 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Next inlines NEXT_PUBLIC_* during `npm run build`. Railway supplies
+# service variables as build args only when the Dockerfile declares them.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 FROM base AS runner
