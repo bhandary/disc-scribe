@@ -40,3 +40,6 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# TLC output from the CSV import dedup check
+.cursor/skills/verify-csv-import-dedup/last-run/
