@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Check DiscVault CSV import dedup.
 
-Reads upload_csv, the unique index, and the session factory, sets the
-booleans in CsvImportDedup.tla from that code, and runs TLC.
+Reads upload_csv, _upsert_cd, the unique index, and the session factory,
+sets the booleans in CsvImportDedup.tla from that code, and runs TLC.
 
-Exit 0 means the working tree still matches the recorded finding at the
-sync commit: uniqueness holds in the model, and the overlapping-import
-bug is still there. It does not mean the import is safe.
+Exit 0 means the working tree matches the recorded shape at the sync
+commit: every album in a valid upload is stored once under the lowercased
+key, including when another upload of that album is in progress, and the
+broken variants below still fail.
 
-Exit 1 means a new violation, a missing guard, a TLC error, or code the
-model does not describe. Read the verdict before changing the model.
+Exit 1 means a violation, a missing strip, a missing guard, a TLC error,
+or code the model does not describe. Read the verdict before changing
+the model.
 """
 
 from __future__ import annotations
@@ -20,7 +22,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import textwrap
 import urllib.request
 from dataclasses import dataclass, field
@@ -31,28 +32,69 @@ TLC_SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 TLC_URL = (
     "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
 )
-SYNC_COMMIT = "61674d92faa9b17c62f2e946a499cafe03cba9b1"
+SYNC_COMMIT = "d83ade882370659e38d706c190926719c02d88b8"
 
 SKILL_DIR = Path(__file__).resolve().parent
 REPO = SKILL_DIR.parents[2]
 SPEC = SKILL_DIR / "CsvImportDedup.tla"
 LAST_RUN = SKILL_DIR / "last-run"
 
-# These are the results for the code at SYNC_COMMIT. Do not edit them to
-# make a run exit 0. If a result changes, the code or the model changed.
+# The code at SYNC_COMMIT. Do not edit these to make a run exit 0.
 RECORDED_SHAPE = {
     "unique_index": True,
     "autoflush": True,
-    "lookup_before_add": True,
+    "upsert": True,
+    "ordered": True,
+    "album_strip": True,
 }
 RECORDED = {
     ("concurrent", "NoDuplicateAlbums"): "pass",
-    ("concurrent", "ImportKeepsEveryValidRow"): "fail",
-    ("concurrent", "NoExclusiveAlbumDropped"): "fail",
+    ("concurrent", "ImportKeepsEveryValidRow"): "pass",
+    ("concurrent", "NoExclusiveAlbumDropped"): "pass",
     ("infile", "NoDuplicateAlbums"): "pass",
     ("infile", "ImportKeepsEveryValidRow"): "pass",
     ("infile", "NoExclusiveAlbumDropped"): "pass",
 }
+
+# Forced shapes. Each one must fail the way the invariant says, including
+# on the fixed code. A pass here means the invariant was weakened.
+VARIANTS = [
+    {
+        "name": "no ON CONFLICT (check-then-insert)",
+        "upsert": False,
+        "unique_index": True,
+        "autoflush": True,
+        "lookup_before_add": True,
+        "ordered": True,
+        "expect": {
+            ("concurrent", "NoDuplicateAlbums"): "pass",
+            ("concurrent", "ImportKeepsEveryValidRow"): "fail",
+            ("concurrent", "NoExclusiveAlbumDropped"): "fail",
+        },
+    },
+    {
+        "name": "no ON CONFLICT and no unique index",
+        "upsert": False,
+        "unique_index": False,
+        "autoflush": True,
+        "lookup_before_add": True,
+        "ordered": True,
+        "expect": {
+            ("concurrent", "NoDuplicateAlbums"): "fail",
+        },
+    },
+    {
+        "name": "upsert without the sort (opposite lock order)",
+        "upsert": True,
+        "unique_index": True,
+        "autoflush": True,
+        "lookup_before_add": True,
+        "ordered": False,
+        "expect": {
+            ("concurrent", "ImportKeepsEveryValidRow"): "fail",
+        },
+    },
+]
 
 PROPERTY_SENTENCE = (
     "Every album in a valid upload is stored once, under the same "
@@ -71,6 +113,9 @@ class Anchors:
     unique_index: bool | None = None
     autoflush: bool | None = None
     lookup_before_add: bool | None = None
+    upsert: bool | None = None
+    ordered: bool = False
+    album_strip: bool = False
     casefold: bool = False
     runnable: bool = False
     gaps: list[str] = field(default_factory=list)
@@ -120,8 +165,95 @@ def _node_contains(nodes: list[ast.AST], target: ast.AST) -> bool:
     return any(inner is target for node in nodes for inner in ast.walk(node))
 
 
+def _calls_attr(fn: ast.AST, attr: str) -> bool:
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == attr
+        ):
+            return True
+    return False
+
+
+def _calls_name(fn: ast.AST, name: str) -> bool:
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == name:
+                return True
+            if isinstance(func, ast.Attribute) and func.attr == name:
+                return True
+    return False
+
+
+def _is_strip_call(node: ast.AST | None) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "strip"
+    )
+
+
+def _album_stripped(fn: ast.AST) -> bool:
+    for node in ast.walk(fn):
+        targets: list[ast.AST] = []
+        value: ast.AST | None = None
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        if any(isinstance(t, ast.Name) and t.id == "album_name" for t in targets):
+            return _is_strip_call(value)
+    return False
+
+
+def _sorted_by_lower(fn: ast.AST) -> bool:
+    for node in ast.walk(fn):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "sort"
+        ):
+            continue
+        for kw in node.keywords:
+            if kw.arg != "key":
+                continue
+            lowers = [
+                n
+                for n in ast.walk(kw.value)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "lower"
+            ]
+            if len(lowers) >= 2:
+                return True
+    return False
+
+
+def _literal_lowers(fn: ast.AST) -> set[str]:
+    found: set[str] = set()
+    for node in ast.walk(fn):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "literal_column"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            continue
+        text = node.args[0].value.replace(" ", "").lower()
+        if text == "lower(artist)":
+            found.add("artist")
+        elif text == "lower(album_name)":
+            found.add("album_name")
+    return found
+
+
 def _add_guarded_by_existing(loop: ast.AST, add: ast.AST) -> bool:
-    """True when db.add sits in exactly one branch of `if existing_cd`."""
     for node in ast.walk(loop):
         if not isinstance(node, ast.If):
             continue
@@ -153,6 +285,37 @@ def _func_lower_fields(loop: ast.AST) -> set[str]:
     return found
 
 
+def _pg_insert_sites(repo: Path) -> list[str]:
+    sites: list[str] = []
+    app = repo / "backend/app"
+    for path in sorted(app.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for inner in ast.walk(node):
+                if not isinstance(inner, ast.Call):
+                    continue
+                func = inner.func
+                is_pg = (
+                    isinstance(func, ast.Name) and func.id == "pg_insert"
+                ) or (
+                    isinstance(func, ast.Attribute) and func.attr == "pg_insert"
+                )
+                is_cd = (
+                    isinstance(func, ast.Name)
+                    and func.id == "CD"
+                )
+                if not is_pg and not is_cd:
+                    continue
+                if is_pg and not (
+                    inner.args and isinstance(inner.args[0], ast.Name) and inner.args[0].id == "CD"
+                ):
+                    continue
+                sites.append(f"{path.relative_to(repo)}:{node.name}")
+    return sites
+
+
 def analyze(repo: Path) -> Anchors:
     anchors = Anchors()
     cds_path = repo / "backend/app/api/routes/cds.py"
@@ -171,44 +334,83 @@ def analyze(repo: Path) -> Anchors:
         anchors.gaps.append("upload_csv is missing from backend/app/api/routes/cds.py")
         return anchors
 
-    loops = [n for n in ast.walk(upload) if isinstance(n, ast.For)]
-    dedup_loop = None
-    for loop in loops:
-        has_execute = any(_is_db_method(n, "execute") for n in ast.walk(loop))
-        has_add = any(_is_db_method(n, "add") for n in ast.walk(loop))
-        if has_execute and has_add:
-            dedup_loop = loop
-            break
-    if dedup_loop is None:
-        anchors.gaps.append(
-            "upload_csv no longer has a loop that both db.execute's a lookup "
-            "and db.add's a CD. The model does not describe this shape."
+    anchors.album_strip = _album_stripped(upload)
+    anchors.ordered = _sorted_by_lower(upload)
+    if not anchors.ordered:
+        anchors.notes.append(
+            "upload_csv does not sort rows by the lowercased artist and album "
+            "before writing, so two files can lock uq_artist_album_lowercase "
+            "in opposite orders"
         )
+
+    upsert_fn = _find_function(cds, "_upsert_cd")
+    conflict_home: ast.AST | None = None
+    if (
+        isinstance(upsert_fn, ast.AsyncFunctionDef)
+        and _calls_name(upload, "_upsert_cd")
+        and _calls_attr(upsert_fn, "on_conflict_do_update")
+    ):
+        anchors.upsert = True
+        conflict_home = upsert_fn
+    elif _calls_attr(upload, "on_conflict_do_update"):
+        anchors.upsert = True
+        conflict_home = upload
     else:
-        executes = [n for n in ast.walk(dedup_loop) if _is_db_method(n, "execute")]
-        adds = [n for n in ast.walk(dedup_loop) if _is_db_method(n, "add")]
-        first_execute = min(n.lineno for n in executes)
-        first_add = min(n.lineno for n in adds)
-        guarded = all(_add_guarded_by_existing(dedup_loop, add) for add in adds)
-        anchors.lookup_before_add = first_execute < first_add and guarded
-        if not guarded:
-            anchors.notes.append(
-                "db.add is not confined to the missing-row branch of "
-                "`if existing_cd`, so the model treats the loop as always inserting"
-            )
-        fields = _func_lower_fields(dedup_loop)
-        anchors.casefold = {"artist", "album_name"} <= fields
+        anchors.upsert = False
+        anchors.notes.append(
+            "upload_csv does not upsert on uq_artist_album_lowercase. "
+            "TLC runs the check-then-insert protocol that ON CONFLICT replaced."
+        )
+
+    if anchors.upsert and conflict_home is not None:
+        lowers = _literal_lowers(conflict_home)
+        anchors.casefold = {"artist", "album_name"} <= lowers
         if not anchors.casefold:
             anchors.gaps.append(
-                "the SELECT in upload_csv no longer calls func.lower on both "
-                "CD.artist and CD.album_name, so it is not the same key as "
-                "uq_artist_album_lowercase"
+                "the ON CONFLICT target is not lower(artist), lower(album_name), "
+                "so it is not the same key as uq_artist_album_lowercase"
             )
+        if not _calls_name(conflict_home, "pg_insert"):
+            anchors.gaps.append(
+                "the upsert does not call pg_insert(CD); the model does not describe it"
+            )
+    else:
+        loops = [n for n in ast.walk(upload) if isinstance(n, ast.For)]
+        dedup_loop = None
+        for loop in loops:
+            has_execute = any(_is_db_method(n, "execute") for n in ast.walk(loop))
+            has_add = any(_is_db_method(n, "add") for n in ast.walk(loop))
+            if has_execute and has_add:
+                dedup_loop = loop
+                break
+        if dedup_loop is None:
+            anchors.lookup_before_add = True
+            anchors.casefold = True
+            anchors.notes.append(
+                "no SELECT-then-db.add loop either; LookupBeforeAdd stays true, "
+                "which is the overlapping-upload failure this fix closed"
+            )
+        else:
+            executes = [n for n in ast.walk(dedup_loop) if _is_db_method(n, "execute")]
+            adds = [n for n in ast.walk(dedup_loop) if _is_db_method(n, "add")]
+            first_execute = min(n.lineno for n in executes)
+            first_add = min(n.lineno for n in adds)
+            guarded = all(_add_guarded_by_existing(dedup_loop, add) for add in adds)
+            anchors.lookup_before_add = first_execute < first_add and guarded
+            fields = _func_lower_fields(dedup_loop)
+            anchors.casefold = {"artist", "album_name"} <= fields
+            if not anchors.casefold:
+                anchors.gaps.append(
+                    "the SELECT in upload_csv no longer calls func.lower on both "
+                    "CD.artist and CD.album_name, so it is not the same key as "
+                    "uq_artist_album_lowercase"
+                )
 
-    commits = []
-    for node in ast.walk(upload):
-        if isinstance(node, ast.Await) and _is_db_method(node.value, "commit"):
-            commits.append(node)
+    commits = [
+        node
+        for node in ast.walk(upload)
+        if isinstance(node, ast.Await) and _is_db_method(node.value, "commit")
+    ]
     if len(commits) != 1:
         anchors.gaps.append(
             f"upload_csv has {len(commits)} `await db.commit()` calls; the model "
@@ -216,32 +418,29 @@ def analyze(repo: Path) -> Anchors:
         )
     else:
         commit = commits[0]
-        if dedup_loop is not None and commit.lineno <= dedup_loop.end_lineno:
-            anchors.gaps.append(
-                "await db.commit() is inside the row loop; a per-row commit "
-                "is a different protocol than the one the model checks"
-            )
         if _enclosing(upload, commit, (ast.Try, ast.ExceptHandler)):
             anchors.gaps.append(
-                "await db.commit() is inside try/except, so a unique-index "
-                "error may no longer roll the whole file back. Update the model "
-                "before treating a TLC result as a verdict on this code."
+                "await db.commit() is inside try/except. A failed commit may no "
+                "longer roll the whole file back. Update the model before treating "
+                "a TLC result as a verdict on this code."
             )
 
-    segment = ast.get_source_segment(cds_src, upload) or ""
-    for token, why in (
-        ("with_for_update", "SELECT ... FOR UPDATE"),
-        ("on_conflict", "INSERT ... ON CONFLICT"),
-        ("IntegrityError", "an IntegrityError handler"),
-        ("isolation", "a non-default isolation level"),
-    ):
-        if token in segment:
-            anchors.gaps.append(
-                f"upload_csv now mentions {token} ({why}). That step is not "
-                "in the model."
-            )
+    for fn in (upload, upsert_fn):
+        if fn is None:
+            continue
+        segment = ast.get_source_segment(cds_src, fn) or ""
+        for token, why in (
+            ("with_for_update", "SELECT ... FOR UPDATE"),
+            ("IntegrityError", "an IntegrityError handler"),
+            ("isolation", "a non-default isolation level"),
+        ):
+            if token in segment:
+                anchors.gaps.append(
+                    f"{fn.name} mentions {token} ({why}). That step is not in the model."
+                )
 
-    mig = ast.parse(mig_path.read_text())
+    mig_src = mig_path.read_text()
+    mig = ast.parse(mig_src)
     upgrade = _find_function(mig, "upgrade")
     if upgrade is None:
         anchors.gaps.append("upgrade() is missing from 001_initial_schema.py")
@@ -264,7 +463,7 @@ def analyze(repo: Path) -> Anchors:
             for kw in node.keywords:
                 if kw.arg == "unique" and isinstance(kw.value, ast.Constant):
                     unique = kw.value.value
-            blob = ast.get_source_segment(mig_path.read_text(), node) or ""
+            blob = ast.get_source_segment(mig_src, node) or ""
             columns_ok = "LOWER(artist)" in blob and "LOWER(album_name)" in blob
             if unique is True and columns_ok:
                 anchors.unique_index = True
@@ -274,9 +473,7 @@ def analyze(repo: Path) -> Anchors:
                 mismatched = True
         if not found:
             anchors.unique_index = False
-            anchors.notes.append(
-                "upgrade() does not create uq_artist_album_lowercase"
-            )
+            anchors.notes.append("upgrade() does not create uq_artist_album_lowercase")
         elif mismatched:
             anchors.unique_index = None
             anchors.gaps.append(
@@ -291,7 +488,10 @@ def analyze(repo: Path) -> Anchors:
             continue
         if not any(isinstance(t, ast.Name) and t.id == "AsyncSessionLocal" for t in node.targets):
             continue
-        if not (isinstance(node.value, ast.Call) and _call_name(node.value.func) == "async_sessionmaker"):
+        if not (
+            isinstance(node.value, ast.Call)
+            and _call_name(node.value.func) == "async_sessionmaker"
+        ):
             continue
         saw_factory = True
         flag = True
@@ -305,35 +505,28 @@ def analyze(repo: Path) -> Anchors:
             "The autoflush assumption is unchecked."
         )
 
-    writers: list[str] = []
-    app = repo / "backend/app"
-    for path in sorted(app.rglob("*.py")):
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                for inner in ast.walk(node):
-                    if (
-                        isinstance(inner, ast.Call)
-                        and isinstance(inner.func, ast.Name)
-                        and inner.func.id == "CD"
-                    ):
-                        rel = path.relative_to(repo)
-                        writers.append(f"{rel}:{node.name}")
-    allowed = {"backend/app/api/routes/cds.py:upload_csv"}
-    extra = [w for w in writers if w not in allowed]
+    sites = _pg_insert_sites(repo)
+    allowed = {
+        "backend/app/api/routes/cds.py:_upsert_cd",
+        "backend/app/api/routes/cds.py:upload_csv",
+    }
+    extra = [site for site in sites if site not in allowed]
     if extra:
         anchors.gaps.append(
-            "a CD row is constructed outside upload_csv, which this model "
-            "does not cover: " + ", ".join(extra)
+            "a CD row is inserted outside upload_csv / _upsert_cd, which this "
+            "model does not cover: " + ", ".join(extra)
         )
-    if not writers:
-        anchors.gaps.append("no CD(...) construction found; upload_csv no longer inserts")
+    if anchors.upsert and not any(site.endswith("_upsert_cd") or site.endswith("upload_csv") for site in sites):
+        anchors.gaps.append("no pg_insert(CD) found; upload_csv no longer inserts")
+
+    if anchors.lookup_before_add is None:
+        anchors.lookup_before_add = True
 
     anchors.runnable = (
         not anchors.gaps
         and anchors.unique_index is not None
         and anchors.autoflush is not None
-        and anchors.lookup_before_add is not None
+        and anchors.upsert is not None
         and anchors.casefold
     )
     return anchors
@@ -364,15 +557,17 @@ def ensure_jar() -> Path:
     return jar
 
 
-def _cfg(scenario: str, anchors: Anchors, invariant: str) -> str:
+def _cfg(flags: dict[str, bool], scenario: str, invariant: str) -> str:
     infile = "TRUE" if scenario == "infile" else "FALSE"
     return textwrap.dedent(
         f"""\
         SPECIFICATION Spec
         CONSTANT InFileScenario = {infile}
-        CONSTANT UniqueIndex = {"TRUE" if anchors.unique_index else "FALSE"}
-        CONSTANT AutoFlush = {"TRUE" if anchors.autoflush else "FALSE"}
-        CONSTANT LookupBeforeAdd = {"TRUE" if anchors.lookup_before_add else "FALSE"}
+        CONSTANT UniqueIndex = {"TRUE" if flags["unique_index"] else "FALSE"}
+        CONSTANT AutoFlush = {"TRUE" if flags["autoflush"] else "FALSE"}
+        CONSTANT LookupBeforeAdd = {"TRUE" if flags["lookup_before_add"] else "FALSE"}
+        CONSTANT Upsert = {"TRUE" if flags["upsert"] else "FALSE"}
+        CONSTANT Ordered = {"TRUE" if flags["ordered"] else "FALSE"}
         INVARIANT {invariant}
         """
     )
@@ -386,18 +581,17 @@ class TlcResult:
     states: str
     output: str
     trace: str
+    label: str
 
 
-def run_tlc(jar: Path, anchors: Anchors, scenario: str, invariant: str) -> TlcResult:
+def run_tlc(jar: Path, flags: dict[str, bool], scenario: str, invariant: str, label: str) -> TlcResult:
     LAST_RUN.mkdir(parents=True, exist_ok=True)
-    cfg_name = f"{scenario}-{invariant}.cfg"
+    cfg_name = f"{label}-{scenario}-{invariant}.cfg"
     cfg_path = LAST_RUN / cfg_name
-    cfg_path.write_text(_cfg(scenario, anchors, invariant))
-    # TLC resolves a config path from the spec directory. A copy with a
-    # relative name next to the spec is the invocation that works.
+    cfg_path.write_text(_cfg(flags, scenario, invariant))
     local_cfg = SPEC.with_name(cfg_name)
     local_cfg.write_text(cfg_path.read_text())
-    meta = LAST_RUN / f"states-{scenario}-{invariant}"
+    meta = LAST_RUN / f"states-{label}-{scenario}-{invariant}"
     if meta.exists():
         shutil.rmtree(meta)
     cmd = [
@@ -426,7 +620,7 @@ def run_tlc(jar: Path, anchors: Anchors, scenario: str, invariant: str) -> TlcRe
     )
     local_cfg.unlink(missing_ok=True)
     output = proc.stdout
-    (LAST_RUN / f"{scenario}-{invariant}.out").write_text(output)
+    (LAST_RUN / f"{label}-{scenario}-{invariant}.out").write_text(output)
     trace = ""
     if "The behavior up to this point is:" in output:
         trace = output.split("The behavior up to this point is:", 1)[1].strip()
@@ -440,7 +634,7 @@ def run_tlc(jar: Path, anchors: Anchors, scenario: str, invariant: str) -> TlcRe
         status = "fail"
     else:
         status = "error"
-    return TlcResult(scenario, invariant, status, states, output, trace)
+    return TlcResult(scenario, invariant, status, states, output, trace, label)
 
 
 def _parse_map(line: str) -> dict[str, str]:
@@ -459,10 +653,10 @@ def explain_trace(trace: str) -> list[str]:
             continue
         label = header.group(1)
         action = "Init"
-        if label.startswith("ProcessRow"):
-            action = "ProcessRow"
-        elif label.startswith("CommitImport"):
-            action = "CommitImport"
+        for name in ("UpsertRow", "UpsertCommit", "ProcessRow", "CommitImport"):
+            if name in label:
+                action = name
+                break
         data: dict[str, dict[str, str]] = {}
         for key in ("phase", "idx", "aborted", "catalog"):
             found = re.search(rf"/\\ {key} = (\[[^\n]*\])", chunk)
@@ -474,15 +668,43 @@ def explain_trace(trace: str) -> list[str]:
     for index in range(1, len(states)):
         action, cur = states[index]
         _, prev = states[index - 1]
-        if action == "ProcessRow":
-            who = next(
-                (
-                    name
-                    for name in cur["idx"]
-                    if prev["idx"].get(name) != cur["idx"].get(name)
-                ),
-                "a session",
-            )
+        who = next(
+            (
+                name
+                for name in cur["idx"]
+                if prev["idx"].get(name) != cur["idx"].get(name)
+                or prev["phase"].get(name) != cur["phase"].get(name)
+            ),
+            "a session",
+        )
+        if action == "UpsertRow":
+            if prev["aborted"].get(who) == "FALSE" and cur["aborted"].get(who) == "TRUE":
+                lines.append(
+                    f"{who}: _upsert_cd's INSERT ... ON CONFLICT has no matching "
+                    "unique index, so the statement errors. The per-row except "
+                    "records it and does not store the row. The transaction is aborted."
+                )
+            else:
+                lines.append(
+                    f"{who}: _upsert_cd inserts the next album, or updates it when "
+                    "that lowercased key is already in this transaction or in cds. "
+                    "The statement holds uq_artist_album_lowercase until commit."
+                )
+        elif action == "UpsertCommit":
+            if cur["phase"].get(who) == "failed":
+                lines.append(
+                    f"{who}: await db.commit() raises. get_db rolls the session back, "
+                    "and every uncommitted album in that file is dropped."
+                )
+            else:
+                albums = ", ".join(
+                    f"{key}={value}" for key, value in sorted(cur["catalog"].items())
+                )
+                lines.append(
+                    f"{who}: await db.commit() publishes this session's inserts "
+                    f"(catalog {albums})."
+                )
+        elif action == "ProcessRow":
             if prev["aborted"].get(who) == "FALSE" and cur["aborted"].get(who) == "TRUE":
                 lines.append(
                     f"{who}: the next row's await db.execute autoflushes a pending "
@@ -492,18 +714,9 @@ def explain_trace(trace: str) -> list[str]:
             else:
                 lines.append(
                     f"{who}: upload_csv reads the next row and runs the SELECT on "
-                    "lower(artist), lower(album_name). The row is not committed yet, "
-                    "so the other session cannot see it. Misses take the db.add branch."
+                    "lower(artist), lower(album_name). A miss takes the db.add branch."
                 )
         elif action == "CommitImport":
-            who = next(
-                (
-                    name
-                    for name in cur["phase"]
-                    if prev["phase"].get(name) != cur["phase"].get(name)
-                ),
-                "a session",
-            )
             if cur["phase"].get(who) == "failed":
                 lines.append(
                     f"{who}: await db.commit() raises. upload_csv does not catch it, "
@@ -522,7 +735,13 @@ def explain_trace(trace: str) -> list[str]:
 
 
 def _print_trace(result: TlcResult) -> None:
-    print(f"--- TLC {result.scenario} / {result.invariant} ({result.status}) ---")
+    print(f"--- TLC {result.label} {result.scenario} / {result.invariant} ({result.status}) ---")
+    if "Deadlock" in result.output or "deadlock" in result.output:
+        print(
+            "TLC reached a deadlock: each upload holds one key of "
+            "uq_artist_album_lowercase and is waiting for the other's key. "
+            "That is the opposite lock order the sort in upload_csv removes."
+        )
     steps = explain_trace(result.trace)
     if steps:
         print("In upload_csv's words:")
@@ -539,14 +758,40 @@ def shape_matches(anchors: Anchors) -> bool:
     return (
         anchors.unique_index is RECORDED_SHAPE["unique_index"]
         and anchors.autoflush is RECORDED_SHAPE["autoflush"]
-        and anchors.lookup_before_add is RECORDED_SHAPE["lookup_before_add"]
+        and anchors.upsert is RECORDED_SHAPE["upsert"]
+        and anchors.ordered is RECORDED_SHAPE["ordered"]
+        and anchors.album_strip is RECORDED_SHAPE["album_strip"]
+    )
+
+
+def _flags_from(anchors: Anchors) -> dict[str, bool]:
+    return {
+        "unique_index": bool(anchors.unique_index),
+        "autoflush": bool(anchors.autoflush),
+        "lookup_before_add": bool(anchors.lookup_before_add),
+        "upsert": bool(anchors.upsert),
+        "ordered": bool(anchors.ordered),
+    }
+
+
+def _strip_counterexample() -> None:
+    print()
+    print("album_name is not stripped the way artist is.")
+    print('Counterexample: "Abbey Road" and "Abbey Road " are different keys.')
+    print(
+        "uq_artist_album_lowercase is LOWER(artist), LOWER(album_name), and "
+        "LOWER does not trim, so both rows would be stored."
+    )
+    print(
+        "The model keys are already stripped, so TLC is not a verdict on this "
+        "code. Strip album_name in upload_csv the same way artist is stripped."
     )
 
 
 def main() -> int:
     print("CSV import dedup")
     print(f"Property: {PROPERTY_SENTENCE}")
-    print(f"Harm: {HARM_SENTENCE}")
+    print(f"What it prevents: {HARM_SENTENCE}")
     print(f"Sync commit: {SYNC_COMMIT}")
     print(f"Tool: TLC from tla2tools {TLC_VERSION} (sha256 {TLC_SHA256})")
     print()
@@ -560,32 +805,40 @@ def main() -> int:
 
     anchors = analyze(REPO)
     print("Anchors read from the working tree:")
-    print(f"  lookup before db.add in upload_csv: {anchors.lookup_before_add}")
-    print(f"  func.lower on artist and album_name: {anchors.casefold}")
+    print(f"  upsert on lower(artist), lower(album_name): {anchors.upsert}")
+    print(f"  conflict target matches the index: {anchors.casefold}")
+    print(f"  rows sorted by the lowercased key: {anchors.ordered}")
+    print(f"  album_name is stripped: {anchors.album_strip}")
     print(f"  uq_artist_album_lowercase is unique: {anchors.unique_index}")
     print(f"  AsyncSessionLocal autoflush is not False: {anchors.autoflush}")
     for note in anchors.notes:
         print(f"  note: {note}")
-    if anchors.gaps:
-        print()
-        print("The model does not describe this code. This is not a passing proof.")
-        for gap in anchors.gaps:
-            print(f"  - {gap}")
-        print(
-            "Update CsvImportDedup.tla from the new steps, then rerun. "
-            "Move the sync commit only after the model matches the new code."
-        )
+    if not anchors.album_strip and not any("upload_csv is missing" in gap for gap in anchors.gaps):
+        _strip_counterexample()
+    if anchors.gaps or not anchors.album_strip:
+        if anchors.gaps:
+            print()
+            print("The model does not describe this code. This is not a passing proof.")
+            for gap in anchors.gaps:
+                print(f"  - {gap}")
+            print(
+                "Update CsvImportDedup.tla from the new steps, then rerun. "
+                "Move the sync commit only after the model matches the new code."
+            )
         return 1
 
     jar = ensure_jar()
     if LAST_RUN.exists():
         shutil.rmtree(LAST_RUN)
     LAST_RUN.mkdir(parents=True)
+
+    flags = _flags_from(anchors)
     results: list[TlcResult] = []
     for scenario, invariant in RECORDED:
-        results.append(run_tlc(jar, anchors, scenario, invariant))
+        results.append(run_tlc(jar, flags, scenario, invariant, "code"))
 
     print()
+    print("Code as it is:")
     mismatches: list[str] = []
     for result in results:
         expected = RECORDED[(result.scenario, result.invariant)]
@@ -604,53 +857,84 @@ def main() -> int:
                 f"{result.scenario}/{result.invariant} is {result.status}, "
                 f"recorded result is {expected}"
             )
-
-    interesting = [
-        r
-        for r in results
-        if r.status == "fail"
-        and (r.scenario, r.invariant)
-        in {
-            ("concurrent", "NoExclusiveAlbumDropped"),
-            ("concurrent", "ImportKeepsEveryValidRow"),
-            ("concurrent", "NoDuplicateAlbums"),
-            ("infile", "ImportKeepsEveryValidRow"),
-        }
-    ]
-    for result in interesting:
-        print()
-        _print_trace(result)
+        if result.status == "fail":
+            print()
+            _print_trace(result)
 
     print()
+    print("Broken variants (these must still fail):")
+    variant_bad: list[str] = []
+    for variant in VARIANTS:
+        variant_flags = {
+            "unique_index": variant["unique_index"],
+            "autoflush": variant["autoflush"],
+            "lookup_before_add": variant["lookup_before_add"],
+            "upsert": variant["upsert"],
+            "ordered": variant["ordered"],
+        }
+        print(f"  {variant['name']}:")
+        for (scenario, invariant), expected in variant["expect"].items():
+            result = run_tlc(
+                jar,
+                variant_flags,
+                scenario,
+                invariant,
+                "variant-" + re.sub(r"[^a-z0-9]+", "-", variant["name"].lower()).strip("-"),
+            )
+            mark = "ok" if result.status == expected else "DIFFERENT"
+            print(
+                f"    {scenario:12} {invariant:28} "
+                f"{result.status:5} (must {expected}) [{mark}] {result.states}"
+            )
+            if result.status == "error":
+                variant_bad.append(
+                    f"{variant['name']} / {invariant} did not finish (TLC error)"
+                )
+                _print_trace(result)
+            elif result.status != expected:
+                variant_bad.append(
+                    f"{variant['name']} / {invariant} is {result.status}, "
+                    f"and it must {expected}. The invariant was weakened, or the "
+                    "broken protocol no longer matches the spec."
+                )
+                _print_trace(result)
+
+    print()
+    if variant_bad:
+        print("Verdict: a broken variant did not fail the way it must.")
+        for item in variant_bad:
+            print(f"  - {item}")
+        print("Do not weaken an invariant, and do not drop a variant, to make this exit 0.")
+        return 1
+
     if not shape_matches(anchors):
         print(
             "The anchors are not the recorded shape "
-            "(lookup before add, unique index on, autoflush left on). "
-            "A TLC failure below is a bug in the code the model was built to catch. "
+            "(upsert on the lowercased key, rows sorted, album_name stripped, "
+            "unique index on, autoflush left on)."
+        )
+        print(
+            "A TLC failure above is the break those anchors describe. "
             "Do not weaken an invariant so this exits 0."
         )
-        if mismatches or any(r.status == "fail" for r in results):
-            print("Verdict: the check caught a break. Recorded finding no longer describes the result.")
-            return 1
-        print("Verdict: shape changed but every recorded invariant still has its old result. Read the diff. Do not move the sync commit until the model is updated to the new steps.")
         return 1
 
     if mismatches:
-        print("Verdict: the result is not the recorded finding.")
+        print("Verdict: the result is not the recorded one for this code.")
         for item in mismatches:
             print(f"  - {item}")
         print(
-            "If you can replay every step in upload_csv, it is a bug. "
-            "If a step cannot happen in the code, the model is wrong. Fix the model, "
-            "do not edit the invariant until it passes."
+            "If you can replay every step in upload_csv and _upsert_cd, it is a bug. "
+            "If a step cannot happen in the code, the model is wrong. Fix the model. "
+            "Do not edit an invariant until it passes."
         )
         return 1
 
     print(
-        "Verdict: matches the recorded finding at "
-        f"{SYNC_COMMIT}. Uniqueness holds in this model. "
-        "The overlapping upload still fails and can drop the rest of its file. "
-        "Exit 0 means that finding is unchanged, not that the import is safe."
+        "Verdict: matches the code at "
+        f"{SYNC_COMMIT}. Every valid album is stored once under the lowercased "
+        "key, including while another upload of that album is in progress. "
+        "The broken variants still fail."
     )
     print(f"Logs and configs: {LAST_RUN}")
     return 0
