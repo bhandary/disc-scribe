@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
+
   * {
     @apply border-border;
   }
@@ -11,26 +15,80 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-serif), Georgia, ui-serif, serif;
+  }
 }
 
-@layer components {
-  .chip {
-    @apply inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-stone-600;
+@layer utilities {
+  .glass {
+    background-color: rgba(255, 255, 255, 0.92);
+    @apply backdrop-blur-xl;
+    box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
   }
 
-  .liner-notes :where(p) {
-    @apply mb-3 text-sm leading-relaxed text-foreground/90;
+  .jewel-case {
+    @apply relative rounded-lg border bg-white;
+    border-color: #e7e2d9;
+    box-shadow:
+      0 1px 1px rgba(28, 25, 23, 0.05),
+      0 14px 32px rgba(44, 36, 28, 0.12);
   }
 
-  .liner-notes :where(h1, h2, h3) {
-    @apply mb-2 mt-6 font-serif text-xl text-foreground;
+  .jewel-spine {
+    @apply absolute left-0 top-0 h-full w-2;
+    background: linear-gradient(to bottom, #4c1d2c, #5a3a28 48%, #3e4a2e);
+    box-shadow: inset -1px 0 2px rgba(44, 36, 28, 0.18);
   }
+}
 
-  .liner-notes :where(ul) {
-    @apply mb-3 list-disc space-y-1 pl-5 text-sm;
-  }
+/* Low-opacity white utilities were tuned for a dark page. On paper they
+   vanish, so point the same classes at a white surface and a warm edge. */
+.bg-white\/5 {
+  background-color: #efebe4;
+}
+.bg-white\/10 {
+  background-color: #ffffff;
+}
+.hover\:bg-white\/5:hover {
+  background-color: #f7f4ef;
+}
+.hover\:bg-white\/10:hover {
+  background-color: #f7f4ef;
+}
+.hover\:bg-white\/20:hover {
+  background-color: #f3efe8;
+}
+.border-white\/5 {
+  border-color: #efeae2;
+}
+.border-white\/10 {
+  border-color: #e7e2d9;
+}
+.border-white\/20 {
+  border-color: #ddd6cb;
+}
+.hover\:border-white\/40:hover {
+  border-color: #c9bfb0;
+}
+.bg-black\/80 {
+  background-color: rgba(28, 25, 23, 0.4);
+}
+.bg-black\/60 {
+  background-color: rgba(28, 25, 23, 0.32);
+}
+.bg-black\/40 {
+  background-color: rgba(247, 244, 239, 0.82);
+}
 
-  .liner-notes :where(a) {
-    @apply underline underline-offset-2;
-  }
+/* Gold fills stay bright; gold text darkens so links clear the paper. */
+.text-vinyl-gold,
+.group:hover .group-hover\:text-vinyl-gold {
+  color: #7a5e16;
 }

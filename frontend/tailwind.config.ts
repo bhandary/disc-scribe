@@ -12,43 +12,66 @@ const config: Config = {
       colors: {
         background: "#F3F1EC",
         foreground: "#1C1917",
-        card: "#FFFFFF",
+        vinyl: {
+          gold: "#D4A017",
+          silver: "#6F675E",
+          obsidian: "#1C1917",
+        },
+        // Placeholders that were near-black zinc now sit on the warm paper scale.
+        zinc: {
+          700: "#5A3A28",
+          800: "#E6E0D6",
+          900: "#D9D2C6",
+          950: "#CFC6B8",
+        },
+        amber: {
+          400: "#8A5A12",
+          500: "#C8962A",
+          600: "#6B2D3C",
+          900: "#4A3228",
+        },
+        green: {
+          400: "#2F4A32",
+          500: "#3E4A2E",
+        },
+        red: {
+          400: "#B91C1C",
+        },
         border: "#E7E2D9",
-        input: "#FFFFFF",
-        ring: "#C9C0B2",
+        input: "#F7F4EF",
+        ring: "#D4A017",
         primary: {
-          DEFAULT: "#2C241C",
-          foreground: "#F7F4EF",
+          DEFAULT: "#D4A017",
+          foreground: "#1C1917",
         },
         secondary: {
           DEFAULT: "#FFFFFF",
           foreground: "#1C1917",
         },
         muted: {
-          DEFAULT: "#E9E4DB",
-          foreground: "#8A847A",
+          DEFAULT: "#EFEBE4",
+          foreground: "#6F675E",
         },
         accent: {
-          DEFAULT: "#F7F4EF",
+          DEFAULT: "#EFEBE4",
           foreground: "#1C1917",
         },
         destructive: {
           DEFAULT: "#B42318",
           foreground: "#FFFFFF",
         },
-        gold: "#D4A017",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "Georgia", "ui-serif", "serif"],
       },
       borderRadius: {
-        lg: "1rem",
-        md: "0.75rem",
-        sm: "0.5rem",
+        lg: "0.75rem",
+        md: "0.5rem",
+        sm: "0.375rem",
       },
-      boxShadow: {
-        card: "0 1px 2px rgba(28, 25, 23, 0.04), 0 8px 24px rgba(28, 25, 23, 0.04)",
+      backdropBlur: {
+        glass: "24px",
       },
     },
   },

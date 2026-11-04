@@ -128,8 +128,8 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
               className={cn(
                 "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all",
                 isDragActive
-                  ? "border-foreground bg-accent"
-                  : "border-border bg-card hover:bg-accent"
+                  ? "border-vinyl-gold bg-vinyl-gold/10"
+                  : "border-white/20 hover:border-white/40 hover:bg-white/5"
               )}
             >
               <input {...getInputProps()} />
@@ -144,8 +144,8 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
           {/* File info and preview */}
           {file && !uploadResult && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-accent p-3">
-                <FileText className="h-8 w-8 text-muted-foreground" />
+              <div className="flex items-center gap-3 p-3 bg-white/5 rounded-lg">
+                <FileText className="w-8 h-8 text-vinyl-gold" />
                 <div className="flex-1">
                   <p className="font-medium">{file.name}</p>
                   <p className="text-xs text-muted-foreground">
@@ -166,15 +166,15 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
 
               {/* Preview table */}
               {preview.length > 0 && (
-                <div className="overflow-hidden rounded-xl border border-border">
-                  <div className="border-b border-border bg-accent px-3 py-2">
+                <div className="border border-white/10 rounded-lg overflow-hidden">
+                  <div className="bg-white/5 px-3 py-2 border-b border-white/10">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Preview (first 5 rows)
                     </p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-accent/60">
+                      <thead className="bg-white/5">
                         <tr>
                           <th className="px-3 py-2 text-left font-medium">Artist</th>
                           <th className="px-3 py-2 text-left font-medium">Album</th>
@@ -185,7 +185,7 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
                       </thead>
                       <tbody>
                         {preview.map((row, idx) => (
-                          <tr key={idx} className="border-t border-border">
+                          <tr key={idx} className="border-t border-white/5">
                             <td className="px-3 py-2">{row.artist}</td>
                             <td className="px-3 py-2">{row.album_name}</td>
                             <td className="px-3 py-2 text-muted-foreground">
@@ -214,8 +214,8 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
           {/* Upload result */}
           {uploadResult && (
             <div className="space-y-3">
-              <div className="flex items-start gap-3 rounded-xl border border-border bg-accent p-4">
-                <CheckCircle2 className="mt-0.5 h-6 w-6 flex-shrink-0 text-foreground" />
+              <div className="flex items-start gap-3 p-4 bg-vinyl-gold/10 border border-vinyl-gold/20 rounded-lg">
+                <CheckCircle2 className="w-6 h-6 text-vinyl-gold flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="font-medium">Upload Complete!</p>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -236,7 +236,7 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
                     {uploadResult.errors.map((error, idx) => (
                       <div key={idx} className="text-xs">
                         <span className="text-muted-foreground">Row {error.row}:</span>{" "}
-                        <span className="text-red-700">{error.error}</span>
+                        <span className="text-red-400">{error.error}</span>
                       </div>
                     ))}
                   </div>

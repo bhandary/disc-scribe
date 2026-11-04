@@ -124,7 +124,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-stone-900/25"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
           />
           
           {/* Drawer */}
@@ -133,7 +133,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 z-50 h-full w-full max-w-lg overflow-y-auto border-l border-border bg-background"
+            className="fixed right-0 top-0 h-full w-full md:w-2/3 lg:w-1/2 glass border-l border-white/10 z-50 overflow-y-auto"
           >
             <div className="p-6 space-y-6">
               {/* Header */}
@@ -143,18 +143,18 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
                     <img
                       src={cd.cover_art_url}
                       alt={cd.album_name}
-                      className="h-20 w-16 rounded-md object-cover"
+                      className="w-20 h-20 rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="flex h-20 w-16 items-center justify-center rounded-md bg-stone-300 text-stone-600">
-                      <Disc3 className="h-6 w-6" />
+                    <div className="w-20 h-20 rounded-lg bg-zinc-800 flex items-center justify-center">
+                      <Disc3 className="w-8 h-8 text-vinyl-gold/20" />
                     </div>
                   )}
                   <div>
-                    <h2 className="font-serif text-3xl font-medium leading-tight">{cd.album_name}</h2>
-                    <p className="mt-1 text-muted-foreground">{cd.artist}</p>
+                    <h2 className="text-2xl font-bold">{cd.album_name}</h2>
+                    <p className="text-muted-foreground">{cd.artist}</p>
                     {cd.lyricist && (
-                      <p className="text-sm text-muted-foreground">Lyrics by {cd.lyricist}</p>
+                      <p className="text-sm text-vinyl-silver">Lyrics by {cd.lyricist}</p>
                     )}
                   </div>
                 </div>
@@ -165,14 +165,14 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
 
               {/* Activity Stepper */}
               {enrichmentState.status !== "complete" && enrichmentState.status !== "idle" && (
-                <div className="rounded-2xl border border-border bg-card p-4 shadow-card">
+                <div className="glass border border-white/10 rounded-lg p-4">
                   <div className="flex items-center gap-3">
                     {enrichmentState.status === "error" ? (
                       <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
                         <X className="w-4 h-4 text-red-500" />
                       </div>
                     ) : (
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <Loader2 className="w-8 h-8 animate-spin text-vinyl-gold" />
                     )}
                     <div>
                       <p className="font-medium">
@@ -189,7 +189,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
 
               {/* Content */}
               {enrichmentState.content && (
-                <div className="liner-notes max-w-none">
+                <div className="prose prose-invert prose-amber max-w-none">
                   <ReactMarkdown>{enrichmentState.content}</ReactMarkdown>
                 </div>
               )}
@@ -207,7 +207,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
                         href={source.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="chip transition-colors hover:bg-stone-200"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-xs transition-colors"
                       >
                         <span className="truncate max-w-[200px]">{source.title}</span>
                         <ExternalLink className="w-3 h-3 flex-shrink-0" />
