@@ -90,7 +90,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-vinyl-gold" />
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
           <div className="space-y-4">
@@ -112,7 +112,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   href="https://tavily.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-vinyl-gold hover:underline"
+                  className="underline underline-offset-2"
                 >
                   tavily.com
                 </a>
@@ -137,7 +137,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   href="https://console.anthropic.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-vinyl-gold hover:underline"
+                  className="underline underline-offset-2"
                 >
                   console.anthropic.com
                 </a>
@@ -162,7 +162,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   href="https://platform.openai.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-vinyl-gold hover:underline"
+                  className="underline underline-offset-2"
                 >
                   platform.openai.com
                 </a>
@@ -175,7 +175,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <select
                 value={llmModel}
                 onChange={(e) => setLlmModel(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-10 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="claude-haiku-5-5">Claude Haiku 5.5 (Default)</option>
                 <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
@@ -215,8 +215,8 @@ function StatusBadge({ configured }: { configured?: boolean }) {
       className={cn(
         "flex items-center gap-1 text-xs px-2 py-1 rounded-full",
         configured
-          ? "bg-green-500/20 text-green-400"
-          : "bg-amber-500/20 text-amber-400"
+          ? "bg-muted text-stone-700"
+          : "bg-amber-50 text-amber-800"
       )}
     >
       {configured ? (

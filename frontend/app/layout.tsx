@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Newsreader } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const serif = Newsreader({
+  subsets: ["latin"],
+  variable: "--font-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "DiscVault AI | Agentic CD Collection Manager",
+  title: "DiscVault | CD Collection",
   description: "Catalog, search, and enrich your physical Music CD collection with AI-powered insights",
 };
 
@@ -15,8 +20,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={inter.className}>{children}</body>
+    <html lang="en" className={`${sans.variable} ${serif.variable}`}>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }

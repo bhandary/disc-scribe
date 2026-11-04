@@ -1,81 +1,90 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Disc3, Play } from "lucide-react";
+import { Check, Disc3 } from "lucide-react";
 import { CD } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 interface CDJewelCaseProps {
   cd: CD;
   onClick?: () => void;
 }
 
-export function CDJewelCase({ cd, onClick }: CDJewelCaseProps) {
+const SPINE_COLORS = ["#4C1D2C", "#243044", "#3E4A2E", "#5A3A28", "#3C2A4A", "#1E3D3A", "#4A3228"];
+
+export function spineColor(seed: string) {
+  let hash = 0;
+  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return SPINE_COLORS[hash % SPINE_COLORS.length];
+}
+
+export function CDSpine({ cd, onClick }: CDJewelCaseProps) {
   return (
-    <motion.div
-      whileHover={{ scale: 1.05, rotateY: 5 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+    <button
+      type="button"
       onClick={onClick}
-      className="cursor-pointer group"
+      title={`${cd.album_name} — ${cd.artist}`}
+      className="h-32 w-10 shrink-0 rounded-md text-[11px] font-medium leading-tight text-[#F6F1E8] shadow-sm"
+      style={{ backgroundColor: spineColor(cd.album_name + cd.artist) }}
     >
-      <div className="jewel-case aspect-square overflow-hidden relative">
-        {/* Spine ridge */}
-        <div className="jewel-spine" />
-        
-        {/* Cover art or placeholder */}
-        <div className="relative w-full h-full p-4">
-          {cd.cover_art_url ? (
-            <img
-              src={cd.cover_art_url}
-              alt={`${cd.album_name} cover`}
-              className="w-full h-full object-cover rounded"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 rounded">
-              <Disc3 className="w-16 h-16 text-vinyl-gold/20" />
-            </div>
-          )}
-          
-          {/* Plastic glare effect */}
-          <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent pointer-events-none rounded" />
-          
-          {/* Hover overlay */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileHover={{ opacity: 1 }}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded"
-          >
-            <Play className="w-12 h-12 text-vinyl-gold" />
-          </motion.div>
-        </div>
-        
-        {/* Multi-disc badge */}
-        {cd.num_discs > 1 && (
-          <div className="absolute top-2 right-2 bg-vinyl-gold text-vinyl-obsidian text-xs font-bold px-2 py-1 rounded shadow-lg">
-            {cd.num_discs}xCD
-          </div>
-        )}
-        
-        {/* Needs enrichment indicator */}
-        {cd.needs_enrichment && (
-          <div className="absolute bottom-2 right-2 w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-        )}
-      </div>
-      
-      {/* Info */}
-      <div className="mt-3 space-y-1">
-        <h3 className="font-semibold text-sm truncate group-hover:text-vinyl-gold transition-colors">
-          {cd.album_name}
-        </h3>
-        <p className="text-xs text-muted-foreground truncate">{cd.artist}</p>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="px-2 py-0.5 bg-white/5 rounded">{cd.genre}</span>
-          {cd.release_year && (
-            <span className="text-muted-foreground">{cd.release_year}</span>
-          )}
-        </div>
-      </div>
-    </motion.div>
+      <span className="block h-full overflow-hidden px-1 py-3 [writing-mode:vertical-rl] rotate-180">
+        {cd.album_name}
+      </span>
+    </button>
+  );
+}
+
+export function CDJewelCase({ cd, onClick }: CDJewelCaseProps) {
+  const meta = [
+    cd.release_year ? String(cd.release_year) : null,
+    cd.lyricist ? `Lyrics by ${cd.lyricist}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full gap-3 rounded-2xl border border-border bg-card p-3 text-left shadow-card transition-shadow hover:shadow-md"
+    >
+      {cd.cover_art_url ? (
+        <img
+          src={cd.cover_art_url}
+          alt=""
+          className="h-16 w-12 shrink-0 rounded-md object-cover"
+        />
+      ) : (
+        <span
+          className="flex h-16 w-12 shrink-0 items-center justify-center rounded-md text-[#F6F1E8]"
+          style={{ backgroundColor: spineColor(cd.album_name + cd.artist) }}
+          aria-hidden
+        >
+          <Disc3 className="h-5 w-5 opacity-80" />
+        </span>
+      )}
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-semibold text-foreground">{cd.album_name}</span>
+        <span className="mt-0.5 block truncate text-sm text-muted-foreground">{cd.artist}</span>
+        <span className="mt-2 flex flex-wrap gap-1.5">
+          <span className="chip">{cd.genre}</span>
+          <span className="chip">
+            {cd.num_discs} {cd.num_discs === 1 ? "disc" : "discs"}
+          </span>
+          <span className="chip">
+            {cd.needs_enrichment ? (
+              "Needs liner notes"
+            ) : (
+              <>
+                <Check className="h-3 w-3" aria-hidden />
+                Liner notes
+              </>
+            )}
+          </span>
+        </span>
+        {meta ? (
+          <span className="mt-2 block truncate text-[11px] text-muted-foreground">{meta}</span>
+        ) : null}
+      </span>
+    </button>
   );
 }
