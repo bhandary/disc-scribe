@@ -10,36 +10,60 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#090A0F",
-        foreground: "#F8FAFC",
+        background: "#F3F1EC",
+        foreground: "#1C1917",
         vinyl: {
-          gold: "#F59E0B",
-          silver: "#94A3B8",
-          obsidian: "#0F172A",
+          gold: "#D4A017",
+          silver: "#6F675E",
+          obsidian: "#1C1917",
         },
-        border: "rgba(255, 255, 255, 0.1)",
-        input: "rgba(255, 255, 255, 0.05)",
-        ring: "#F59E0B",
+        // Placeholders that were near-black zinc now sit on the warm paper scale.
+        zinc: {
+          700: "#5A3A28",
+          800: "#E6E0D6",
+          900: "#D9D2C6",
+          950: "#CFC6B8",
+        },
+        amber: {
+          400: "#8A5A12",
+          500: "#C8962A",
+          600: "#6B2D3C",
+          900: "#4A3228",
+        },
+        green: {
+          400: "#2F4A32",
+          500: "#3E4A2E",
+        },
+        red: {
+          400: "#B91C1C",
+        },
+        border: "#E7E2D9",
+        input: "#F7F4EF",
+        ring: "#D4A017",
         primary: {
-          DEFAULT: "#F59E0B",
-          foreground: "#0F172A",
+          DEFAULT: "#D4A017",
+          foreground: "#1C1917",
         },
         secondary: {
-          DEFAULT: "rgba(255, 255, 255, 0.1)",
-          foreground: "#F8FAFC",
+          DEFAULT: "#FFFFFF",
+          foreground: "#1C1917",
         },
         muted: {
-          DEFAULT: "rgba(255, 255, 255, 0.05)",
-          foreground: "#94A3B8",
+          DEFAULT: "#EFEBE4",
+          foreground: "#6F675E",
         },
         accent: {
-          DEFAULT: "#F59E0B",
-          foreground: "#0F172A",
+          DEFAULT: "#EFEBE4",
+          foreground: "#1C1917",
         },
         destructive: {
-          DEFAULT: "#DC2626",
-          foreground: "#F8FAFC",
+          DEFAULT: "#B42318",
+          foreground: "#FFFFFF",
         },
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        serif: ["var(--font-serif)", "Georgia", "ui-serif", "serif"],
       },
       borderRadius: {
         lg: "0.75rem",
