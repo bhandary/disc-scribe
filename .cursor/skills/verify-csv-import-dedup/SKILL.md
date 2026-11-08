@@ -1,6 +1,6 @@
 ---
 name: verify-csv-import-dedup
-description: "Check DiscVault CSV import dedup with TLC. Use when a change touches upload_csv, _upsert_cd, CD inserts, uq_artist_album_lowercase, the users migration, AsyncSessionLocal, get_db, or the CSV modal line that says duplicates are updated automatically."
+description: "Check Liner Notes CSV import dedup with TLC. Use when a change touches upload_csv, _upsert_cd, CD inserts, uq_artist_album_lowercase, the users migration, AsyncSessionLocal, get_db, or the CSV modal line that says duplicates are updated automatically."
 ---
 
 # Verify CSV import dedup

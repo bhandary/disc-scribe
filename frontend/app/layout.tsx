@@ -9,7 +9,7 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "DiscVault AI | Agentic CD Collection Manager",
+  title: "Liner Notes | Agentic CD Collection Manager",
   description: "Catalog, search, and enrich your physical Music CD collection with AI-powered insights",
 };
 

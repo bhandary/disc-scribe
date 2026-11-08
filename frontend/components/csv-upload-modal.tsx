@@ -99,7 +99,7 @@ export function CSVUploadModal({ isOpen, onClose, onUploadComplete }: CSVUploadM
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "discvault_template.csv";
+    a.download = "liner-notes-template.csv";
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -1,6 +1,6 @@
 ---------------------------- MODULE CsvImportDedup ----------------------------
 (***************************************************************************)
-(* DiscVault CSV import, the dedup protocol in upload_csv.                 *)
+(* Liner Notes CSV import, the dedup protocol in upload_csv.               *)
 (*                                                                          *)
 (* Property: an upload of valid rows stores each of its albums once,       *)
 (* matched on the same lowercased artist and album the unique index uses,  *)

@@ -26,7 +26,7 @@ export default function LoginPage() {
           <Disc3 className="h-7 w-7 text-vinyl-obsidian" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-4xl">DiscVault AI</h1>
+          <h1 className="text-4xl">Liner Notes</h1>
           <p className="text-sm text-muted-foreground">Sign in to open your shelf.</p>
         </div>
         {error && <p className="text-sm text-red-700">{error}</p>}

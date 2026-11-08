@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check DiscVault CSV import dedup.
+"""Check Liner Notes CSV import dedup.
 
 Reads upload_csv, _upsert_cd, the unique index, and the session factory,
 sets the booleans in CsvImportDedup.tla from that code, and runs TLC.
