@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, ExternalLink, RefreshCw, Disc3 } from "lucide-react";
 import { CD, api } from "@/lib/api";
@@ -28,7 +28,12 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
     sources: [],
   });
 
+  const streamAbort = useRef<AbortController | null>(null);
+
   const startEnrichment = (cdId: string) => {
+    streamAbort.current?.abort();
+    const controller = new AbortController();
+    streamAbort.current = controller;
     setEnrichmentState({
       status: "planning",
       message: "Initializing Deep Agent...",
@@ -36,65 +41,50 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
       sources: [],
     });
 
-    const eventSource = api.enrichCDStream(cdId);
-
-    eventSource.addEventListener("plan", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
-      setEnrichmentState((prev) => ({
-        ...prev,
-        status: "planning",
-        message: data.status || `Planning: ${data.queries?.join(", ")}`,
-      }));
-    });
-
-    eventSource.addEventListener("tool_call", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
-      setEnrichmentState((prev) => ({
-        ...prev,
-        status: "searching",
-        message: `Searching: ${data.query}`,
-      }));
-    });
-
-    eventSource.addEventListener("token", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
-      setEnrichmentState((prev) => ({
-        ...prev,
-        status: "synthesizing",
-        message: "Generating Digital Liner Notes...",
-        content: prev.content + data.content,
-      }));
-    });
-
-    eventSource.addEventListener("complete", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
-      setEnrichmentState({
-        status: "complete",
-        message: "Enrichment complete!",
-        content: data.summary,
-        sources: data.sources || [],
-      });
-      eventSource.close();
-    });
-
-    eventSource.addEventListener("error", (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
-      setEnrichmentState((prev) => ({
-        ...prev,
-        status: "error",
-        message: data.message || "Enrichment failed",
-      }));
-      eventSource.close();
-    });
-
-    eventSource.onerror = () => {
-      setEnrichmentState((prev) => ({
-        ...prev,
-        status: "error",
-        message: "Connection error",
-      }));
-      eventSource.close();
+    const onEvent = (event: string, data: any) => {
+      if (event === "plan") {
+        setEnrichmentState((prev) => ({
+          ...prev,
+          status: "planning",
+          message: data.status || `Planning: ${data.queries?.join(", ")}`,
+        }));
+      } else if (event === "tool_call") {
+        setEnrichmentState((prev) => ({
+          ...prev,
+          status: "searching",
+          message: `Searching: ${data.query}`,
+        }));
+      } else if (event === "token") {
+        setEnrichmentState((prev) => ({
+          ...prev,
+          status: "synthesizing",
+          message: "Generating Digital Liner Notes...",
+          content: prev.content + data.content,
+        }));
+      } else if (event === "complete") {
+        setEnrichmentState({
+          status: "complete",
+          message: "Enrichment complete!",
+          content: data.summary,
+          sources: data.sources || [],
+        });
+      } else if (event === "error") {
+        setEnrichmentState((prev) => ({
+          ...prev,
+          status: "error",
+          message: data.message || "Enrichment failed",
+        }));
+      }
     };
+
+    api.streamEnrichment(cdId, onEvent, controller.signal).catch((error: Error) => {
+      if (controller.signal.aborted) return;
+      setEnrichmentState((prev) => ({
+        ...prev,
+        status: "error",
+        message: error.message || "Connection error",
+      }));
+    });
   };
 
   useEffect(() => {
@@ -110,6 +100,7 @@ export function DigitalBookletDrawer({ cd, isOpen, onClose }: DigitalBookletDraw
         startEnrichment(cd.id);
       }
     }
+    return () => streamAbort.current?.abort();
   }, [cd, isOpen]);
 
   if (!cd) return null;

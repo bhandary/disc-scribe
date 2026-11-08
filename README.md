@@ -127,12 +127,34 @@ Visit http://localhost:3000
 | `created_at` | TIMESTAMP | Record creation timestamp |
 | `updated_at` | TIMESTAMP | Last update timestamp |
 
-**Unique Constraint:** `(LOWER(artist), LOWER(album_name))`
+**Unique index:** `(user_id, LOWER(artist), LOWER(album_name))`. Each account has its own copy of an album. Rows that existed before accounts have `user_id` NULL and stay hidden: queries match the signed-in user, and NULL matches no one. They are not given to the first person who signs in.
 
 ### `app_settings` Table
 Stores encrypted API keys and configuration.
 
 ## 🔧 Configuration
+
+### Google sign-in
+
+The API runs the OpenID Connect Authorization Code flow with PKCE against Google and then redirects to the shelf with a signed session token. Register these redirect URIs on the Google Cloud OAuth client (Authorized redirect URIs):
+
+- Local `npm run dev` and Docker Compose (the API is on port 8000 either way): `http://localhost:8000/api/auth/callback`
+- Railway: `https://backend-production-adebe.up.railway.app/api/auth/callback`
+
+Set these on the backend. `NEXT_PUBLIC_API_URL` is still a frontend build arg and must be the API origin the browser calls.
+
+| Variable | Local | Railway |
+| --- | --- | --- |
+| `GOOGLE_CLIENT_ID` | OAuth client id | same client, or a second client |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret | same |
+| `SESSION_SECRET` | long random string | a different long random string |
+| `FRONTEND_PUBLIC_URL` | `http://localhost:3000` for `npm run dev`, `http://localhost:3001` for Compose | `https://frontend-production-8e7ba.up.railway.app` |
+| `BACKEND_PUBLIC_URL` | `http://localhost:8000` | `https://backend-production-adebe.up.railway.app` |
+| `SESSION_COOKIE_SECURE` | `false` | `true` |
+| `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001` | `https://frontend-production-8e7ba.up.railway.app` |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | `https://backend-production-adebe.up.railway.app` |
+
+`BACKEND_PUBLIC_URL` plus `/api/auth/callback` is the redirect URI above. It has to match the Google console character for character.
 
 ### API Keys (Settings Modal)
 1. Click the ⚙️ settings icon in the header

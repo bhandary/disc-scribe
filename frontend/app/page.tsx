@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Upload, Settings, Disc3, Loader2 } from "lucide-react";
 import { CDJewelCase } from "@/components/cd-jewel-case";
 import { SearchBar, SearchFilter } from "@/components/search-bar";
@@ -8,9 +9,33 @@ import { DigitalBookletDrawer } from "@/components/digital-booklet-drawer";
 import { CSVUploadModal } from "@/components/csv-upload-modal";
 import { SettingsModal } from "@/components/settings-modal";
 import { Button } from "@/components/ui/button";
-import { api, CD } from "@/lib/api";
+import { api, CD, SessionUser } from "@/lib/api";
+import { clearSession } from "@/lib/session";
+
+function AccountBadge({ user }: { user: SessionUser }) {
+  const [failed, setFailed] = useState(false);
+  const label = (user.name || user.email || "?").slice(0, 1).toUpperCase();
+  if (!user.picture || failed) {
+    return (
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-vinyl-gold text-sm font-semibold text-vinyl-obsidian">
+        {label}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={user.picture}
+      alt=""
+      className="h-8 w-8 rounded-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export default function Home() {
+  const router = useRouter();
+  const [account, setAccount] = useState<SessionUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [cds, setCDs] = useState<CD[]>([]);
   const [selectedCD, setSelectedCD] = useState<CD | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -46,8 +71,32 @@ export default function Home() {
   }, [searchQuery, searchFilter, page]);
 
   useEffect(() => {
+    let cancelled = false;
+    api.me().then((me) => {
+      if (cancelled) return;
+      if (!me) {
+        router.replace("/login");
+        return;
+      }
+      setAccount(me);
+      setAuthReady(true);
+    }).catch(() => {
+      if (!cancelled) router.replace("/login");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!authReady) return;
     loadCDs();
-  }, [loadCDs]);
+  }, [loadCDs, authReady]);
+
+  const signOut = () => {
+    clearSession();
+    router.replace("/login");
+  };
 
   const handleSearch = (query: string, filter: SearchFilter) => {
     setSearchQuery(query);
@@ -64,12 +113,16 @@ export default function Home() {
     loadCDs();
   };
 
+  if (!authReady || !account) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-30 glass border-b border-white/10">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-vinyl-gold to-amber-600 flex items-center justify-center shadow-lg">
                 <Disc3 className="w-6 h-6 text-vinyl-obsidian" />
@@ -80,7 +133,23 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <AccountBadge user={account} />
+                <div className="min-w-0 leading-tight">
+                  <p className="max-w-[10rem] truncate text-sm font-medium">
+                    {account.name || "Signed in"}
+                  </p>
+                  {account.email && (
+                    <p className="max-w-[10rem] truncate text-xs text-muted-foreground">
+                      {account.email}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button onClick={signOut} variant="ghost" size="sm">
+                Sign out
+              </Button>
               <Button
                 onClick={() => setIsUploadModalOpen(true)}
                 variant="secondary"

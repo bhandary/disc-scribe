@@ -27,7 +27,13 @@ services:
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      CORS_ORIGINS: http://localhost:3001,http://frontend:3001
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-me}
+      FRONTEND_PUBLIC_URL: http://localhost:3001
+      BACKEND_PUBLIC_URL: http://localhost:8000
+      SESSION_COOKIE_SECURE: "false"
       PORT: 8000
     ports:
       - "8000:8000"

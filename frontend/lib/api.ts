@@ -1,4 +1,13 @@
+import { authHeaders, redirectToLogin } from "@/lib/session";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export interface SessionUser {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  picture?: string | null;
+}
 
 export interface CD {
   id: string;
@@ -34,7 +43,25 @@ export interface APIKeyStatus {
   llm_model: string;
 }
 
+async function readJson<T>(response: Response): Promise<T> {
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error("Not signed in");
+  }
+  if (!response.ok) throw new Error("Request failed");
+  return response.json();
+}
+
 export const api = {
+  googleLoginUrl: `${API_URL}/api/auth/google`,
+
+  async me(): Promise<SessionUser | null> {
+    const response = await fetch(`${API_URL}/api/auth/me`, { headers: authHeaders() });
+    if (response.status === 401) return null;
+    if (!response.ok) throw new Error("Failed to load the signed-in account");
+    return response.json();
+  },
+
   async searchCDs(params: {
     q?: string;
     artist?: string;
@@ -50,16 +77,16 @@ export const api = {
         searchParams.append(key, value.toString());
       }
     });
-    
-    const response = await fetch(`${API_URL}/api/cds/search?${searchParams}`);
-    if (!response.ok) throw new Error("Search failed");
-    return response.json();
+
+    const response = await fetch(`${API_URL}/api/cds/search?${searchParams}`, {
+      headers: authHeaders(),
+    });
+    return readJson(response);
   },
 
   async getCD(id: string): Promise<CD> {
-    const response = await fetch(`${API_URL}/api/cds/${id}`);
-    if (!response.ok) throw new Error("Failed to fetch CD");
-    return response.json();
+    const response = await fetch(`${API_URL}/api/cds/${id}`, { headers: authHeaders() });
+    return readJson(response);
   },
 
   async uploadCSV(file: File): Promise<{
@@ -69,20 +96,19 @@ export const api = {
   }> {
     const formData = new FormData();
     formData.append("file", file);
-    
+
     const response = await fetch(`${API_URL}/api/cds/upload-csv`, {
       method: "POST",
+      headers: authHeaders(),
       body: formData,
     });
-    
-    if (!response.ok) throw new Error("Upload failed");
-    return response.json();
+
+    return readJson(response);
   },
 
   async getAPIKeyStatus(): Promise<APIKeyStatus> {
-    const response = await fetch(`${API_URL}/api/settings/status`);
-    if (!response.ok) throw new Error("Failed to fetch API key status");
-    return response.json();
+    const response = await fetch(`${API_URL}/api/settings/status`, { headers: authHeaders() });
+    return readJson(response);
   },
 
   async updateAPIKeys(keys: {
@@ -93,15 +119,52 @@ export const api = {
   }): Promise<{ message: string; updated: string[] }> {
     const response = await fetch(`${API_URL}/api/settings/keys`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(keys),
     });
-    
-    if (!response.ok) throw new Error("Failed to update API keys");
-    return response.json();
+
+    return readJson(response);
   },
 
-  enrichCDStream(cdId: string): EventSource {
-    return new EventSource(`${API_URL}/api/cds/${cdId}/enrich-stream`);
+  async streamEnrichment(
+    cdId: string,
+    onEvent: (event: string, data: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const response = await fetch(`${API_URL}/api/cds/${cdId}/enrich-stream`, {
+      headers: authHeaders(),
+      signal,
+    });
+    if (response.status === 401) {
+      redirectToLogin();
+      throw new Error("Not signed in");
+    }
+    if (!response.ok || !response.body) throw new Error("Enrichment failed");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        let event = "message";
+        const dataLines: string[] = [];
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+        }
+        if (!dataLines.length) continue;
+        const raw = dataLines.join("\n");
+        try {
+          onEvent(event, JSON.parse(raw));
+        } catch {
+          onEvent(event, raw);
+        }
+      }
+    }
   },
 };

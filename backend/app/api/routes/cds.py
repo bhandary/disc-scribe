@@ -11,8 +11,10 @@ from datetime import datetime, timezone
 from sse_starlette.sse import EventSourceResponse
 import asyncio
 
-from app.core.database import get_db
+from app.core.auth import get_current_user
+from app.core.database import AsyncSessionLocal, get_db
 from app.models.cd import CD
+from app.models.user import User
 from app.schemas.cd import CDCreate, CDResponse, CDSearchResponse
 from app.services.musicbrainz import MusicBrainzService
 from app.services.deep_agent import DeepAgentEnricher
@@ -24,23 +26,26 @@ router = APIRouter(prefix="/api/cds", tags=["cds"])
 async def _upsert_cd(
     db: AsyncSession,
     *,
+    user_id: UUID,
     artist: str,
     album_name: str,
     lyricist: Optional[str],
     genre: str,
     num_discs: int,
 ) -> bool:
-    """Insert a CD or update the row that shares its lowercased artist and album.
+    """Insert a CD or update the row that shares this user's lowercased artist and album.
 
-    The conflict target is the expression unique index uq_artist_album_lowercase.
-    A duplicate becomes an update of lyricist, genre, num_discs, and updated_at.
-    ai_summary, cover art, and the stored names stay as they were.
-    Returns True when this statement stored a new row. Postgres sets xmax
-    to 0 only on the insert path of ON CONFLICT DO UPDATE.
+    The conflict target is the expression unique index uq_artist_album_lowercase
+    on (user_id, LOWER(artist), LOWER(album_name)). Another user's copy of the
+    same album is a different key. A duplicate becomes an update of lyricist,
+    genre, num_discs, and updated_at. ai_summary, cover art, the stored names,
+    and user_id stay as they were. Returns True when this statement stored a
+    new row. Postgres sets xmax to 0 only on the insert path of ON CONFLICT DO UPDATE.
     """
     now = datetime.now(timezone.utc)
     stmt = pg_insert(CD).values(
         id=uuid.uuid4(),
+        user_id=user_id,
         artist=artist,
         album_name=album_name,
         lyricist=lyricist,
@@ -52,6 +57,7 @@ async def _upsert_cd(
     excluded = stmt.excluded
     stmt = stmt.on_conflict_do_update(
         index_elements=[
+            literal_column("user_id"),
             literal_column("lower(artist)"),
             literal_column("lower(album_name)"),
         ],
@@ -69,7 +75,8 @@ async def _upsert_cd(
 @router.post("/upload-csv")
 async def upload_csv(
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """Upload and process CSV file with CD data"""
     
@@ -125,14 +132,16 @@ async def upload_csv(
             })
 
     # Same lock order in every request: LOWER(artist), LOWER(album_name).
-    # Two uploads can then wait on uq_artist_album_lowercase without deadlocking,
-    # and a conflict updates the row instead of aborting the rest of the file.
+    # user_id is the same for every row of this upload, so it does not change
+    # the order. Two uploads of one user wait on uq_artist_album_lowercase
+    # without deadlocking. Another user's album is a different key.
     pending.sort(key=lambda item: (item[1].lower(), item[2].lower()))
 
     for idx, artist, album_name, lyricist, genre, num_discs in pending:
         try:
             if await _upsert_cd(
                 db,
+                user_id=user.id,
                 artist=artist,
                 album_name=album_name,
                 lyricist=lyricist,
@@ -151,7 +160,7 @@ async def upload_csv(
     await db.commit()
     
     # Trigger background task for cover art (simplified - in production use celery/arq)
-    asyncio.create_task(fetch_missing_cover_art(db))
+    asyncio.create_task(fetch_missing_cover_art(user.id))
     
     return {
         "inserted": inserted,
@@ -160,19 +169,24 @@ async def upload_csv(
     }
 
 
-async def fetch_missing_cover_art(db: AsyncSession):
-    """Background task to fetch missing cover art"""
+async def fetch_missing_cover_art(user_id: UUID):
+    """Background task to fetch missing cover art for one user's shelf."""
     try:
-        stmt = select(CD).where(CD.cover_art_url.is_(None)).limit(50)
-        result = await db.execute(stmt)
-        cds = result.scalars().all()
-        
-        for cd in cds:
-            cover_url = await MusicBrainzService.fetch_cover_art(cd.artist, cd.album_name)
-            if cover_url:
-                cd.cover_art_url = cover_url
-                await db.commit()
-                await asyncio.sleep(2)  # Rate limiting
+        async with AsyncSessionLocal() as db:
+            stmt = (
+                select(CD)
+                .where(CD.user_id == user_id, CD.cover_art_url.is_(None))
+                .limit(50)
+            )
+            result = await db.execute(stmt)
+            cds = result.scalars().all()
+
+            for cd in cds:
+                cover_url = await MusicBrainzService.fetch_cover_art(cd.artist, cd.album_name)
+                if cover_url:
+                    cd.cover_art_url = cover_url
+                    await db.commit()
+                    await asyncio.sleep(2)  # Rate limiting
     except Exception as e:
         print(f"Cover art fetch error: {e}")
 
@@ -186,14 +200,15 @@ async def search_cds(
     genre: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    """Multi-field fuzzy search with pg_trgm"""
+    """Multi-field fuzzy search with pg_trgm, limited to the signed-in user's shelf."""
     
     offset = (page - 1) * limit
     
-    # Build query
-    conditions = []
+    # Rows with no owner (imported before accounts) stay hidden.
+    conditions = [CD.user_id == user.id]
     
     if q:
         # Omni-search across all fields
@@ -269,12 +284,12 @@ async def search_cds(
 async def enrich_cd_stream(
     cd_id: UUID,
     request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """Stream AI enrichment via SSE"""
     
-    # Fetch CD
-    result = await db.execute(select(CD).where(CD.id == cd_id))
+    result = await db.execute(select(CD).where(CD.id == cd_id, CD.user_id == user.id))
     cd = result.scalar_one_or_none()
     
     if not cd:
@@ -333,10 +348,11 @@ async def enrich_cd_stream(
 @router.get("/{cd_id}", response_model=CDResponse)
 async def get_cd(
     cd_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    """Get single CD by ID"""
-    result = await db.execute(select(CD).where(CD.id == cd_id))
+    """Get single CD by ID, only if it belongs to the signed-in user."""
+    result = await db.execute(select(CD).where(CD.id == cd_id, CD.user_id == user.id))
     cd = result.scalar_one_or_none()
     
     if not cd:
