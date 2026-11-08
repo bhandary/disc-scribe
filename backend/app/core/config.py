@@ -13,11 +13,28 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     LLM_MODEL: str = "claude-haiku-5-5"
-    CORS_ORIGINS: str = "http://localhost:3000"
-    
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    # Signs the OAuth state cookie and the session JWT the frontend stores.
+    SESSION_SECRET: str = ""
+    FRONTEND_PUBLIC_URL: str = "http://localhost:3000"
+    BACKEND_PUBLIC_URL: str = "http://localhost:8000"
+    # The OAuth state cookie is set on the API host during a top-level redirect.
+    # Railway is HTTPS, so set this true there. Local http must leave it false.
+    SESSION_COOKIE_SECURE: bool = False
+
     @property
     def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def google_redirect_uri(self) -> str:
+        return self.BACKEND_PUBLIC_URL.rstrip("/") + "/api/auth/callback"
+
+    @property
+    def frontend_callback_url(self) -> str:
+        return self.FRONTEND_PUBLIC_URL.rstrip("/") + "/auth/callback"
     
     def get_fernet(self) -> Fernet:
         """Get Fernet cipher for encryption/decryption"""

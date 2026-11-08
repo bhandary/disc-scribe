@@ -2,8 +2,10 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.models.app_settings import AppSetting
+from app.models.user import User
 from app.schemas.settings import APIKeyUpdate, APIKeyStatus
 from app.core.config import settings, mask_api_key, get_runtime_keys
 
@@ -13,7 +15,8 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 @router.get("/status", response_model=APIKeyStatus)
 async def get_api_key_status(
     request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """Get masked status of all API keys"""
     
@@ -34,7 +37,8 @@ async def get_api_key_status(
 @router.post("/keys")
 async def update_api_keys(
     key_update: APIKeyUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """Encrypt and store API keys in database"""
     

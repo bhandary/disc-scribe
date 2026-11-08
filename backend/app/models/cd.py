@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Text, TIMESTAMP
+from sqlalchemy import Column, String, Integer, Text, TIMESTAMP, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 from datetime import datetime
@@ -9,6 +9,9 @@ class CD(Base):
     __tablename__ = "cds"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Null only for rows that existed before accounts. Those stay hidden:
+    # every query filters on the signed-in user, and NULL matches nobody.
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     artist = Column(String(255), nullable=False)
     album_name = Column(String(255), nullable=False)
     lyricist = Column(String(255), nullable=True)

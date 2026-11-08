@@ -5,9 +5,11 @@ Reads upload_csv, _upsert_cd, the unique index, and the session factory,
 sets the booleans in CsvImportDedup.tla from that code, and runs TLC.
 
 Exit 0 means the working tree matches the recorded shape at the sync
-commit: every album in a valid upload is stored once under the lowercased
-key, including when another upload of that album is in progress, and the
-broken variants below still fail.
+commit: every album in a valid upload is stored once for that user under
+user_id and the lowercased artist and album, including when another upload
+of that album by the same user is in progress, and the broken variants
+below still fail. TLC's catalog is one user. A missing user_id on the
+index or the conflict target is a gap, not a TLC pass.
 
 Exit 1 means a violation, a missing strip, a missing guard, a TLC error,
 or code the model does not describe. Read the verdict before changing
@@ -32,7 +34,7 @@ TLC_SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 TLC_URL = (
     "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
 )
-SYNC_COMMIT = "d83ade882370659e38d706c190926719c02d88b8"
+SYNC_COMMIT = "78529cf5d6399408e3537fac1e068181a420743a"
 
 SKILL_DIR = Path(__file__).resolve().parent
 REPO = SKILL_DIR.parents[2]
@@ -97,9 +99,9 @@ VARIANTS = [
 ]
 
 PROPERTY_SENTENCE = (
-    "Every album in a valid upload is stored once, under the same "
-    "lowercased artist and album the unique index uses, even when another "
-    "upload of that album is in progress."
+    "Every album in a valid upload is stored once for that user, under the "
+    "same user and lowercased artist and album the unique index uses, even "
+    "when another upload of that album by the same user is in progress."
 )
 HARM_SENTENCE = (
     "An upload that overlaps one album can fail at commit and drop every "
@@ -117,6 +119,7 @@ class Anchors:
     ordered: bool = False
     album_strip: bool = False
     casefold: bool = False
+    user_key: bool = False
     runnable: bool = False
     gaps: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -250,7 +253,93 @@ def _literal_lowers(fn: ast.AST) -> set[str]:
             found.add("artist")
         elif text == "lower(album_name)":
             found.add("album_name")
+        elif text == "user_id":
+            found.add("user_id")
     return found
+
+
+def _values_sets(fn: ast.AST, name: str) -> bool:
+    for node in ast.walk(fn):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "values"
+        ):
+            continue
+        if any(kw.arg == name for kw in node.keywords):
+            return True
+    return False
+
+
+def _migration_order(repo: Path) -> list[Path]:
+    versions = repo / "backend/alembic/versions"
+    by_parent: dict[object, tuple[str, Path]] = {}
+    for path in sorted(versions.glob("*.py")):
+        tree = ast.parse(path.read_text())
+        revision = None
+        parent = None
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Constant):
+                continue
+            if target.id == "revision":
+                revision = node.value.value
+            elif target.id == "down_revision":
+                parent = node.value.value
+        if isinstance(revision, str):
+            by_parent[parent] = (revision, path)
+    order: list[Path] = []
+    parent: object = None
+    seen: set[str] = set()
+    while parent in by_parent:
+        revision, path = by_parent[parent]
+        if revision in seen:
+            break
+        seen.add(revision)
+        order.append(path)
+        parent = revision
+    return order
+
+
+def _final_catalog_index(repo: Path) -> tuple[bool, str]:
+    """Replay create/drop of uq_artist_album_lowercase across migrations.
+
+    Returns (present, source of the create that is still in effect).
+    """
+    present = False
+    blob = ""
+    unique: bool | None = None
+    for path in _migration_order(repo):
+        src = path.read_text()
+        tree = ast.parse(src)
+        upgrade = _find_function(tree, "upgrade")
+        if upgrade is None:
+            continue
+        calls = [node for node in ast.walk(upgrade) if isinstance(node, ast.Call)]
+        calls.sort(key=lambda node: (node.lineno, node.col_offset))
+        for node in calls:
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            if not node.args or not isinstance(node.args[0], ast.Constant):
+                continue
+            if node.args[0].value != "uq_artist_album_lowercase":
+                continue
+            if node.func.attr == "drop_index":
+                present = False
+                blob = ""
+                unique = None
+            elif node.func.attr == "create_index":
+                present = True
+                blob = ast.get_source_segment(src, node) or ""
+                unique = None
+                for kw in node.keywords:
+                    if kw.arg == "unique" and isinstance(kw.value, ast.Constant):
+                        unique = bool(kw.value.value)
+                if unique is not True:
+                    present = False
+    return present, blob
 
 
 def _add_guarded_by_existing(loop: ast.AST, add: ast.AST) -> bool:
@@ -364,11 +453,17 @@ def analyze(repo: Path) -> Anchors:
 
     if anchors.upsert and conflict_home is not None:
         lowers = _literal_lowers(conflict_home)
-        anchors.casefold = {"artist", "album_name"} <= lowers
+        anchors.casefold = {"artist", "album_name", "user_id"} <= lowers
         if not anchors.casefold:
             anchors.gaps.append(
-                "the ON CONFLICT target is not lower(artist), lower(album_name), "
-                "so it is not the same key as uq_artist_album_lowercase"
+                "the ON CONFLICT target does not include user_id, "
+                "lower(artist), and lower(album_name), so it is not the same "
+                "key as uq_artist_album_lowercase"
+            )
+        if not _values_sets(conflict_home, "user_id"):
+            anchors.gaps.append(
+                "the upsert does not store user_id, so a row would not land on "
+                "the per-user key uq_artist_album_lowercase uses"
             )
         if not _calls_name(conflict_home, "pg_insert"):
             anchors.gaps.append(
@@ -439,46 +534,28 @@ def analyze(repo: Path) -> Anchors:
                     f"{fn.name} mentions {token} ({why}). That step is not in the model."
                 )
 
-    mig_src = mig_path.read_text()
-    mig = ast.parse(mig_src)
-    upgrade = _find_function(mig, "upgrade")
-    if upgrade is None:
-        anchors.gaps.append("upgrade() is missing from 001_initial_schema.py")
+    present, blob = _final_catalog_index(repo)
+    columns_ok = "LOWER(artist)" in blob and "LOWER(album_name)" in blob
+    user_ok = "user_id" in blob
+    if not present:
+        anchors.unique_index = False
+        anchors.notes.append(
+            "the migrations do not leave uq_artist_album_lowercase in place"
+        )
+    elif not columns_ok:
+        anchors.unique_index = None
+        anchors.gaps.append(
+            "uq_artist_album_lowercase is not a unique index on "
+            "LOWER(artist), LOWER(album_name). The model does not describe it."
+        )
     else:
-        found = False
-        mismatched = False
-        for node in ast.walk(upgrade):
-            if not (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "create_index"
-            ):
-                continue
-            if not node.args or not isinstance(node.args[0], ast.Constant):
-                continue
-            if node.args[0].value != "uq_artist_album_lowercase":
-                continue
-            found = True
-            unique = None
-            for kw in node.keywords:
-                if kw.arg == "unique" and isinstance(kw.value, ast.Constant):
-                    unique = kw.value.value
-            blob = ast.get_source_segment(mig_src, node) or ""
-            columns_ok = "LOWER(artist)" in blob and "LOWER(album_name)" in blob
-            if unique is True and columns_ok:
-                anchors.unique_index = True
-            elif unique is False:
-                anchors.unique_index = False
-            else:
-                mismatched = True
-        if not found:
-            anchors.unique_index = False
-            anchors.notes.append("upgrade() does not create uq_artist_album_lowercase")
-        elif mismatched:
-            anchors.unique_index = None
+        anchors.unique_index = True
+        anchors.user_key = user_ok
+        if not user_ok:
             anchors.gaps.append(
-                "uq_artist_album_lowercase is not a unique index on "
-                "LOWER(artist), LOWER(album_name). The model does not describe it."
+                "uq_artist_album_lowercase does not include user_id. Two users "
+                "would share one album row. TLC's catalog is one user's shelf "
+                "and does not prove that split."
             )
 
     db_tree = ast.parse(db_path.read_text())
@@ -805,8 +882,9 @@ def main() -> int:
 
     anchors = analyze(REPO)
     print("Anchors read from the working tree:")
-    print(f"  upsert on lower(artist), lower(album_name): {anchors.upsert}")
+    print(f"  upsert on user_id, lower(artist), lower(album_name): {anchors.upsert}")
     print(f"  conflict target matches the index: {anchors.casefold}")
+    print(f"  index includes user_id: {anchors.user_key}")
     print(f"  rows sorted by the lowercased key: {anchors.ordered}")
     print(f"  album_name is stripped: {anchors.album_strip}")
     print(f"  uq_artist_album_lowercase is unique: {anchors.unique_index}")
@@ -932,8 +1010,9 @@ def main() -> int:
 
     print(
         "Verdict: matches the code at "
-        f"{SYNC_COMMIT}. Every valid album is stored once under the lowercased "
-        "key, including while another upload of that album is in progress. "
+        f"{SYNC_COMMIT}. Every valid album is stored once for that user under "
+        "user_id and the lowercased artist and album, including while another "
+        "upload of that album by the same user is in progress. "
         "The broken variants still fail."
     )
     print(f"Logs and configs: {LAST_RUN}")
