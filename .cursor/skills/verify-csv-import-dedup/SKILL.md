@@ -1,13 +1,15 @@
 ---
 name: verify-csv-import-dedup
-description: "Check DiscVault CSV import dedup with TLC. Use when a change touches upload_csv, _upsert_cd, CD inserts, uq_artist_album_lowercase, AsyncSessionLocal, get_db, or the CSV modal line that says duplicates are updated automatically."
+description: "Check DiscVault CSV import dedup with TLC. Use when a change touches upload_csv, _upsert_cd, CD inserts, uq_artist_album_lowercase, the users migration, AsyncSessionLocal, get_db, or the CSV modal line that says duplicates are updated automatically."
 ---
 
 # Verify CSV import dedup
 
-Two uploads of the same album, or the same album twice in one file, must leave one `cds` row for that lowercased artist and album. A valid row must not disappear because the other upload committed first. `"Abbey Road"` and `"Abbey Road "` are the same album.
+Two uploads of the same album by the same user, or the same album twice in one file, must leave one `cds` row for that user and that lowercased artist and album. A valid row must not disappear because the other upload committed first. `"Abbey Road"` and `"Abbey Road "` are the same album. Another user's copy is a different row.
 
-**Property:** Every album in a valid upload is stored once, under the same lowercased artist and album the unique index uses, even when another upload of that album is in progress.
+**Property:** Every album in a valid upload is stored once for that user, under the same user and lowercased artist and album the unique index uses, even when another upload of that album by the same user is in progress.
+
+The previous property said "under the same lowercased artist and album" and did not mention the user. That was the global key. The promise changed when `user_id` joined the unique index: one person's import must not update another person's album. The new sentence is the one above. TLC still models one user's shelf (both uploads share that user). `check.py` refuses to run TLC unless the index and the `ON CONFLICT` target include `user_id` as well as `lower(artist)` and `lower(album_name)`. Two users importing one album is `backend/tests/test_accounts.py`, not a TLC state.
 
 **What it prevents:** An upload that overlaps one album can fail at commit and drop every other album in that file, and the client gets a failed request instead of an update.
 
@@ -18,7 +20,7 @@ Exit 0 means that property holds for the protocol in the working tree, and the b
 Run the check when a diff touches any of these:
 
 - `backend/app/api/routes/cds.py` — `upload_csv`, `_upsert_cd`, and any new `pg_insert(CD)` or `CD(...)` call
-- `backend/alembic/versions/001_initial_schema.py` — `upgrade`, index `uq_artist_album_lowercase`
+- `backend/alembic/versions/001_initial_schema.py` and `002_user_accounts.py` — `upgrade`, index `uq_artist_album_lowercase` (001 creates the old global index; 002 replaces it with `(user_id, LOWER(artist), LOWER(album_name))`)
 - `backend/app/core/database.py` — `AsyncSessionLocal`, `get_db`
 - `frontend/components/csv-upload-modal.tsx` — the line "Duplicates will be updated automatically."
 
@@ -42,9 +44,9 @@ The same promise has a Postgres test, `backend/tests/test_upload_csv_dedup.py`. 
 
 The script reads the working tree and sets the model switches from it:
 
-- `Upsert` — `upload_csv` calls `_upsert_cd`, and `_upsert_cd` calls `on_conflict_do_update` with `literal_column("lower(artist)")` and `literal_column("lower(album_name)")`
-- `Ordered` — `upload_csv` sorts the valid rows by a key that calls `.lower()` at least twice (the artist and album pair) before that write
-- `UniqueIndex` — `upgrade()` creates unique index `uq_artist_album_lowercase` on `LOWER(artist)`, `LOWER(album_name)`
+- `Upsert` — `upload_csv` calls `_upsert_cd`, and `_upsert_cd` calls `on_conflict_do_update` with `literal_column("user_id")`, `literal_column("lower(artist)")`, and `literal_column("lower(album_name)")`, and the insert values include `user_id`
+- `Ordered` — `upload_csv` sorts the valid rows by a key that calls `.lower()` at least twice (the artist and album pair) before that write. `user_id` is the same on every row of one upload, so it does not change that order
+- `UniqueIndex` — after every migration's `upgrade()`, unique index `uq_artist_album_lowercase` is on `user_id`, `LOWER(artist)`, `LOWER(album_name)`. 001 creates the older global index; 002 drops it and creates this one. The checker replays both.
 - `album_name` strip — the assignment to `album_name` in `upload_csv` is a `.strip()` call, the same treatment `artist` already had
 - `AutoFlush` — `AsyncSessionLocal = async_sessionmaker(...)` does not pass `autoflush=False`. Used only by the check-then-insert variant.
 
@@ -52,7 +54,7 @@ Exit 0: those switches match the recorded shape, `NoDuplicateAlbums`, `ImportKee
 
 Exit 1, and the output says `"Abbey Road"` and `"Abbey Road "` are different keys: `album_name` is not stripped. `LOWER` does not trim, so the unique index stores both. The model keys are already stripped, so this is not a TLC verdict and not a reason to edit the spec. Strip `album_name`.
 
-Exit 1, with "The model does not describe this code": a step was added or moved in a way the model does not have (a second `await db.commit()`, commit inside `try`, `with_for_update`, an `IntegrityError` handler, another isolation level, a `pg_insert(CD)` outside `upload_csv` / `_upsert_cd`, an `ON CONFLICT` target that is not `lower(artist), lower(album_name)`). That is a modeling gap. Do not call the old proof a pass. Update `CsvImportDedup.tla` so each action is again one indivisible step of the new code, then rerun.
+Exit 1, with "The model does not describe this code": a step was added or moved in a way the model does not have (a second `await db.commit()`, commit inside `try`, `with_for_update`, an `IntegrityError` handler, another isolation level, a `pg_insert(CD)` outside `upload_csv` / `_upsert_cd`, an `ON CONFLICT` target that does not include `user_id`, `lower(artist)`, and `lower(album_name)`, or a final `uq_artist_album_lowercase` that omits `user_id`). That is a modeling gap. Do not call the old proof a pass. Update `CsvImportDedup.tla` so each action is again one indivisible step of the new code, then rerun. A missing `user_id` is this gap even though TLC's one-user catalog would still pass: the spec does not contain a second user.
 
 Exit 1, with a TLC status that is not the recorded one: read the trace. Replay it against `upload_csv` and `_upsert_cd`.
 
@@ -70,7 +72,7 @@ Read every TLC result with the pstack `/statechart` skill. The spec is `.cursor/
 
 ## The protocol TLC checks
 
-`_upsert_cd` inserts a row or updates the row that shares its lowercased artist and album. `lyricist`, `genre`, `num_discs`, and `updated_at` move on conflict. `ai_summary`, cover art, and the stored names stay. `upload_csv` sorts by `(artist.lower(), album_name.lower())` first, so two requests take `uq_artist_album_lowercase` locks in one order. The same album twice in one file is an insert and then an update. `await db.commit()` then publishes that transaction.
+`_upsert_cd` inserts a row or updates the row that shares that user's lowercased artist and album. `lyricist`, `genre`, `num_discs`, and `updated_at` move on conflict. `ai_summary`, cover art, and the stored names stay. `upload_csv` sorts by `(artist.lower(), album_name.lower())` first, so two requests take `uq_artist_album_lowercase` locks in one order. The same album twice in one file is an insert and then an update. `await db.commit()` then publishes that transaction.
 
 On that shape the three invariants pass. The concurrent graph is the sorted overlap: `i1` carries Abbey, `i2` carries Abbey then Revolver (10 distinct states). The one-file graph is Abbey twice (4 distinct states). Nothing is committed at the start.
 
@@ -96,17 +98,17 @@ If merges landed on this code without a rerun, use `/maintain-formal-verificatio
 
 ## Coverage
 
-Sync commit: `d83ade882370659e38d706c190926719c02d88b8`
+Sync commit: `78529cf5d6399408e3537fac1e068181a420743a`
 
 Product files at that commit are what this model was read against. Move the sync commit forward only after a rerun that still describes the covered functions at the new commit.
 
 | What the model uses | Where |
 | --- | --- |
 | Strip `artist` and `album_name`, sort by the lowercased pair, one upsert per valid row, per-row `except`, one `await db.commit()` | `upload_csv` in `backend/app/api/routes/cds.py` |
-| `pg_insert(CD).on_conflict_do_update` on `lower(artist)`, `lower(album_name)`; update `lyricist`, `genre`, `num_discs`, `updated_at` | `_upsert_cd` in the same file |
+| `pg_insert(CD).on_conflict_do_update` on `user_id`, `lower(artist)`, `lower(album_name)`; update `lyricist`, `genre`, `num_discs`, `updated_at` | `_upsert_cd` in the same file |
 | Rollback when that commit raises | `get_db` in `backend/app/core/database.py` |
 | Autoflush left at the library default (the old loop only) | `AsyncSessionLocal` in `backend/app/core/database.py` |
-| Unique index on `LOWER(artist)`, `LOWER(album_name)` | `upgrade` in `backend/alembic/versions/001_initial_schema.py` (`uq_artist_album_lowercase`) |
+| Unique index on `user_id`, `LOWER(artist)`, `LOWER(album_name)` | `upgrade` in `backend/alembic/versions/002_user_accounts.py` (`uq_artist_album_lowercase`; 001's global index is dropped there) |
 | The only `pg_insert(CD)` | `_upsert_cd` |
 | The promise the invariant states | "Duplicates will be updated automatically." in `frontend/components/csv-upload-modal.tsx` |
 | End state of two overlapping uploads, and `"Abbey Road "` against `"Abbey Road"` | `backend/tests/test_upload_csv_dedup.py` |
@@ -118,7 +120,7 @@ Product files at that commit are what this model was read against. Move the sync
 - The sort is the lock order. Python's sort is stable, so two rows with the same key keep file order and the later row is the update. The model counts rows; it does not track `genre` or `lyricist`. Which concurrent upload's fields win is the later commit.
 - `str.lower()` in the sort and `LOWER()` in the index and in the `ON CONFLICT` target agree. The model keys are already that pair, and already stripped.
 - One upsert is one step. A commit that lands inside `await db.execute` of that single statement is not a separate step.
-- With the unique index removed, `ON CONFLICT (lower(artist), lower(album_name))` is a statement error, not a silent second insert. Two rows appear only when the upsert and the index are both gone.
+- With the unique index removed, `ON CONFLICT (user_id, lower(artist), lower(album_name))` is a statement error, not a silent second insert. Two rows for one user appear only when the upsert and the index are both gone. Two users with the same album are two rows while the index includes `user_id`; that is the accounts test, not this model.
 
 ## What this does not cover
 
