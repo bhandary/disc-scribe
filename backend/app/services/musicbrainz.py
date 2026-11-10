@@ -16,7 +16,7 @@ class MusicBrainzService:
         Returns the front cover image URL or None
         """
         headers = {
-            "User-Agent": "DiscVaultAI/1.0 (educational project)",
+            "User-Agent": "LinerNotes/1.0 (educational project)",
             "Accept": "application/json"
         }
         

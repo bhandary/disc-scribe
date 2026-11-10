@@ -1,8 +1,8 @@
-# DiscVault AI — Agentic CD Collection Manager
+# Liner Notes — Agentic CD Collection Manager
 
 A full-stack web application to catalog, search, and enrich your physical Music CD collection with AI-powered insights.
 
-![DiscVault AI](https://img.shields.io/badge/Stack-Next.js%20%2B%20FastAPI-blue)
+![Liner Notes](https://img.shields.io/badge/Stack-Next.js%20%2B%20FastAPI-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## ✨ Features
@@ -50,7 +50,7 @@ A full-stack web application to catalog, search, and enrich your physical Music 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
-cd discvault-ai
+cd disc-scribe
 
 # Copy environment variables
 cp .env.example .env
