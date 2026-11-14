@@ -2,9 +2,10 @@
 (***************************************************************************)
 (* Liner Notes CSV import, the dedup protocol in upload_csv.               *)
 (*                                                                          *)
-(* Property: an upload of valid rows stores each of its albums once,       *)
-(* matched on the same lowercased artist and album the unique index uses,  *)
-(* even when another upload of that album is in progress.                  *)
+(* Property: an upload of valid rows stores each album once for that user, *)
+(* under the same user and lowercased artist and album the unique index    *)
+(* uses, even when another upload of that album by the same user is in     *)
+(* progress.                                                                *)
 (*                                                                          *)
 (* What that prevents: an upload that overlaps one album failing at commit *)
 (* and dropping every other album in that file.                            *)
@@ -120,7 +121,7 @@ OtherHolds(i, k) ==
 
 \* ---- the upsert protocol (_upsert_cd) ------------------------------------
 
-\* INSERT ... ON CONFLICT (lower(artist), lower(album_name)) DO UPDATE.
+\* INSERT ... ON CONFLICT (user_id, lower(artist), lower(album_name)) DO UPDATE.
 \* The statement waits while another transaction holds that index entry.
 \* With the index gone, Postgres rejects the ON CONFLICT clause, the
 \* per-row except records it, and the transaction is aborted.

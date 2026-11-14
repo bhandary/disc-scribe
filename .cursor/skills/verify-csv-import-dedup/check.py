@@ -34,7 +34,7 @@ TLC_SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 TLC_URL = (
     "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
 )
-SYNC_COMMIT = "78529cf5d6399408e3537fac1e068181a420743a"
+SYNC_COMMIT = "77171b8a044901cf79564dcc6e77af69a1f01500"
 
 SKILL_DIR = Path(__file__).resolve().parent
 REPO = SKILL_DIR.parents[2]
@@ -856,8 +856,8 @@ def _strip_counterexample() -> None:
     print("album_name is not stripped the way artist is.")
     print('Counterexample: "Abbey Road" and "Abbey Road " are different keys.')
     print(
-        "uq_artist_album_lowercase is LOWER(artist), LOWER(album_name), and "
-        "LOWER does not trim, so both rows would be stored."
+        "uq_artist_album_lowercase is (user_id, LOWER(artist), LOWER(album_name)), "
+        "and LOWER does not trim, so both rows would be stored for that user."
     )
     print(
         "The model keys are already stripped, so TLC is not a verdict on this "

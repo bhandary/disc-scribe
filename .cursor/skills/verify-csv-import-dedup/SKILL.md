@@ -83,7 +83,7 @@ These variants are part of every run. The script forces the switches; it does no
 - Remove `on_conflict_do_update` from `_upsert_cd`. `Upsert` is false. TLC runs the old loop: both sessions `SELECT` Abbey, both miss, both `db.add`, the first commit wins, and the second file dies at autoflush or at `await db.commit()`. `ImportKeepsEveryValidRow` and `NoExclusiveAlbumDropped` fail. Revolver, the album only the second file had, is gone, or the request fails after the rows were the other session's problem.
 - Also delete `op.create_index('uq_artist_album_lowercase', ...)` in `upgrade()`, still without the upsert. `NoDuplicateAlbums` fails: both commits succeed and the catalog has two Abbey rows.
 - Remove `pending.sort(...)` and keep the upsert. `Ordered` is false. The files are Abbey then Revolver against Revolver then Abbey. Each session holds one key and waits for the other. TLC reports deadlock. This check counts that deadlock as a failed run of `ImportKeepsEveryValidRow`: the uploads never reach `committed`. While both are still in `row`, the invariant formula is true; the failure is the missing next step. Postgres would abort one of those transactions, and `get_db` would roll that file back.
-- Leave the upsert in place and delete `op.create_index('uq_artist_album_lowercase', ...)` (or pass `unique=False`). `ON CONFLICT (lower(artist), lower(album_name))` is then a statement error (`there is no unique or exclusion constraint matching the ON CONFLICT specification`). The per-row `except` records it, `await db.commit()` rolls the file back, and `ImportKeepsEveryValidRow` fails. That case is the code-shaped run, not a separate variant.
+- Leave the upsert in place and delete `op.create_index('uq_artist_album_lowercase', ...)` (or pass `unique=False`). `ON CONFLICT (user_id, lower(artist), lower(album_name))` is then a statement error (`there is no unique or exclusion constraint matching the ON CONFLICT specification`). The per-row `except` records it, `await db.commit()` rolls the file back, and `ImportKeepsEveryValidRow` fails. That case is the code-shaped run, not a separate variant.
 - Assign `album_name` without `.strip()` (the old `row.get('album_name') or row.get('album', '').strip()`). The command exits 1 with the `"Abbey Road "` counterexample and does not claim a TLC pass.
 
 ## Updating the check after an intended change
@@ -98,7 +98,7 @@ If merges landed on this code without a rerun, use `/maintain-formal-verificatio
 
 ## Coverage
 
-Sync commit: `78529cf5d6399408e3537fac1e068181a420743a`
+Sync commit: `77171b8a044901cf79564dcc6e77af69a1f01500`
 
 Product files at that commit are what this model was read against. Move the sync commit forward only after a rerun that still describes the covered functions at the new commit.
 
@@ -127,6 +127,6 @@ Product files at that commit are what this model was read against. Move the sync
 - More than two concurrent uploads, files longer than two rows, or a catalog that already contains duplicate keys.
 - Rows rejected for missing artist, album, or genre. A whitespace-only album becomes empty because of `.strip()` and is an error row; the model starts from valid keys.
 - Which overlapping upload's `genre`, `lyricist`, or `num_discs` remains. The test does not assert that either. `ai_summary` and the stored names are not in the model; the test checks that one later upsert leaves `ai_summary` in place and does not rename the row.
-- Cover art (`fetch_missing_cover_art` uses the request session after the response). Enrichment (`enrich_cd_stream` writing `ai_summary`). API key order in `get_runtime_keys`.
+- Cover art (`fetch_missing_cover_art` opens its own session and fills missing covers for that user). Enrichment (`enrich_cd_stream` writing `ai_summary`). API key order in `get_runtime_keys`.
 - Non-ASCII case folding, where Python `str.lower` and Postgres `LOWER` can disagree.
 - The frontend parser in `csv-upload-modal.tsx` (Papa Parse). Only the server loop is modeled.
